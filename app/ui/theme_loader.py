@@ -1,46 +1,37 @@
 """
 Sistema de carga de temas y configuración de iconos.
+Tema único: Sober Light Emerald (emerald_light).
 """
 
 from PyQt6.QtWidgets import QApplication
 from typing import Dict, Optional
 
+from app.ui.theme.emerald_light import get_theme_colors as _emerald_colors, THEME_NAME
 
-# Tema actual (Titanium Construct v2)
+
+# Tema actual (Sober Light Emerald)
 THEMES = {
-    "titanium_construct_v2": {
-        "name": "Titanium Construct v2",
-        "colors": {
-            "accent": "#7c4dff",
-            "text": "#ffffff",
-            "text_sec": "#b0b0b0",
-            "window": "#1e1e1e",
-            "base": "#2D2D30",
-            "alt": "#252526",
-            "border": "#5E5E62",
-            "success": "#00C853",
-            "danger": "#FF5252",
-            "warning": "#FFA726",
-            "info": "#448AFF",
-        }
+    "emerald_light": {
+        "name": THEME_NAME,
+        "colors": _emerald_colors(),
     }
 }
 
 
-def get_theme_colors(theme_name: str = "titanium_construct_v2") -> Dict[str, str]:
+def get_theme_colors(theme_name: str = "emerald_light") -> Dict[str, str]:
     """
     Obtiene los colores del tema especificado.
-    
+
     Args:
         theme_name: Nombre del tema
-    
+
     Returns:
-        Diccionario con los colores del tema
+        Diccionario con los colores del tema (por defecto, Sober Light Emerald)
     """
-    return THEMES.get(theme_name, {}).get("colors", {})
+    return THEMES.get(theme_name, {}).get("colors", _emerald_colors())
 
 
-def apply_theme_with_icons(app: Optional[QApplication] = None, theme_name: str = "titanium_construct_v2"):
+def apply_theme_with_icons(app: Optional[QApplication] = None, theme_name: str = "emerald_light"):
     """
     Aplica un tema Y configura los iconos SVG.
     

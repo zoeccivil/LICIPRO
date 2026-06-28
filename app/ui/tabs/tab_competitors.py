@@ -24,7 +24,7 @@ from app.ui.dialogs.dialogo_gestionar_oferta_lote import DialogoGestionarOfertaL
 from app.ui.dialogs.select_licitacion_dialog import SelectLicitacionDialog  # (Comentado si no se usa aquí)
 # app/ui/tabs/tab_competitors.py
 # ... (otras importaciones)
-from app.ui.dialogs.dialogo_seleccionar_competidores import DialogoSeleccionarCompetidores
+from app.ui.dialogs.dialogo_gestionar_competidores import DialogoSeleccionarCompetidores
 from app.ui.dialogs.dialogo_analisis_paquetes import DialogoAnalisisPaquetes  # <-- AÑADIR
 # Añade el import
 from app.ui.dialogs.dialogo_parametros_evaluacion import DialogoElegirMetodoEvaluacionQt, DialogoParametrosEvaluacionQt

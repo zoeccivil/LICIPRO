@@ -1,6 +1,7 @@
 """
-Modern UI Widgets for Titanium Construct v2 Theme.
-Componentes reutilizables para el dashboard moderno.
+Modern UI Widgets — Sober Light Emerald Theme.
+Componentes reutilizables para el dashboard moderno (modo claro).
+Todos los colores se consumen desde los Design Tokens (emerald_light.TOKENS).
 """
 from __future__ import annotations
 from typing import Optional, Callable
@@ -8,11 +9,13 @@ from typing import Optional, Callable
 from PyQt6.QtCore import Qt, pyqtSignal, QSize
 from PyQt6.QtGui import QFont, QIcon
 from PyQt6.QtWidgets import (
-    QFrame, QVBoxLayout, QHBoxLayout, QLabel, 
+    QFrame, QVBoxLayout, QHBoxLayout, QLabel,
     QPushButton, QWidget, QProgressBar, QSizePolicy
 )
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QCursor
+
+from app.ui.theme.emerald_light import TOKENS
 
 class StatCard(QFrame):
     """
@@ -21,10 +24,10 @@ class StatCard(QFrame):
     """
     
     def __init__(
-        self, 
-        title: str, 
-        value: str, 
-        accent_color: str = "#7C4DFF",
+        self,
+        title: str,
+        value: str,
+        accent_color: str = TOKENS["PRIMARY_ACCENT"],
         icon_text: Optional[str] = None,
         parent: Optional[QWidget] = None
     ):
@@ -50,45 +53,50 @@ class StatCard(QFrame):
         self.setObjectName("StatCard")
         self.setFrameShape(QFrame.Shape.StyledPanel)
         self.setMinimumHeight(120)
-        
-        # Aplicar estilo específico
+
+        # Tarjeta premium: fondo blanco, borde sutil perimetral, esquinas 12px
+        # e indicador vertical semántico en el extremo IZQUIERDO (border-left).
         self.setStyleSheet(f"""
             #StatCard {{
-                background-color: #2D2D30;
-                border: 1px solid #3E3E42;
+                background-color: {TOKENS['SURFACE']};
+                border: 1px solid {TOKENS['BORDER']};
+                border-left: 3px solid {self._accent_color};
                 border-radius: 12px;
-                border-bottom: 3px solid {self._accent_color};
-                padding: 20px;
             }}
             #StatCard:hover {{
-                border: 1px solid #4E4E52;
+                border: 1px solid {TOKENS['SCROLLBAR_HANDLE']};
+                border-left: 3px solid {self._accent_color};
             }}
         """)
-        
+
         layout = QVBoxLayout(self)
         layout.setSpacing(10)
-        layout.setContentsMargins(20, 20, 20, 20)
-        
-        # Título
+        # Margen izquierdo algo menor para compensar el indicador de 3px.
+        layout.setContentsMargins(18, 20, 20, 20)
+
+        # Título (capitalizado ligero, gris medio)
         title_label = QLabel(self._title)
-        title_label.setStyleSheet("""
+        title_label.setStyleSheet(f"""
             font-size: 12px;
-            color: #B0B0B0;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            font-weight: 600;
+            color: {TOKENS['TEXT_MUTED']};
+            letter-spacing: 0.2px;
+            font-weight: 500;
+            background-color: transparent;
+            border: none;
         """)
         layout.addWidget(title_label)
-        
-        # Valor
+
+        # Valor (destacado en zinc oscuro)
         value_label = QLabel(self._value)
-        value_label.setStyleSheet("""
+        value_label.setStyleSheet(f"""
             font-size: 32px;
             font-weight: 700;
-            color: #FFFFFF;
+            color: {TOKENS['TEXT_PRIMARY']};
+            background-color: transparent;
+            border: none;
         """)
         layout.addWidget(value_label)
-        
+
         layout.addStretch()
     
     def update_value(self, new_value: str) -> None:
@@ -112,32 +120,28 @@ class StatusBadge(QLabel):
     Usado para mostrar estados en tablas (ej: "En curso", "Ganada", "Perdida").
     """
     
-    # Estilos predefinidos por tipo de estado
+    # Estilos predefinidos por tipo de estado (fondo pastel suave + texto oscuro
+    # contrastante, derivados de los Design Tokens del tema claro).
     STYLES = {
         "success": {
-            "bg": "rgba(0, 200, 83, 0.15)",
-            "color": "#00C853",
-            "border": "#00C853"
+            "bg": TOKENS["SUCCESS_BG"],
+            "color": TOKENS["SUCCESS_TEXT"],
         },
         "warning": {
-            "bg": "rgba(255, 171, 0, 0.15)",
-            "color": "#FFAB00",
-            "border": "#FFAB00"
+            "bg": TOKENS["WARNING_BG"],
+            "color": TOKENS["WARNING_TEXT"],
         },
         "error": {
-            "bg": "rgba(213, 0, 0, 0.15)",
-            "color": "#D50000",
-            "border": "#D50000"
+            "bg": TOKENS["ERROR_BG"],
+            "color": TOKENS["ERROR_TEXT"],
         },
         "info": {
-            "bg": "rgba(68, 138, 255, 0.15)",
-            "color": "#448AFF",
-            "border": "#448AFF"
+            "bg": TOKENS["INFO_BG"],
+            "color": TOKENS["INFO_TEXT"],
         },
         "default": {
-            "bg": "rgba(176, 176, 176, 0.15)",
-            "color": "#B0B0B0",
-            "border": "#3E3E42"
+            "bg": TOKENS["SURFACE_HOVER"],
+            "color": TOKENS["TEXT_MUTED"],
         }
     }
     
@@ -168,8 +172,8 @@ class StatusBadge(QLabel):
             QLabel {{
                 background-color: {style['bg']};
                 color: {style['color']};
-                border: 1px solid {style['border']};
-                border-radius: 12px;
+                border: none;
+                border-radius: 8px;
                 padding: 4px 12px;
                 font-size: 11px;
                 font-weight: 600;
@@ -186,9 +190,9 @@ class ModernProgressBar(QWidget):
     """
     
     def __init__(
-        self, 
-        value: int = 0, 
-        color: str = "#448AFF",
+        self,
+        value: int = 0,
+        color: str = TOKENS["PRIMARY_ACCENT"],
         parent: Optional[QWidget] = None
     ):
         """
@@ -219,7 +223,7 @@ class ModernProgressBar(QWidget):
         self.progress_bar.setFixedHeight(6)
         self.progress_bar.setStyleSheet(f"""
             QProgressBar {{
-                background-color: #121212;
+                background-color: {TOKENS['BORDER']};
                 border: none;
                 border-radius: 3px;
             }}
@@ -228,13 +232,14 @@ class ModernProgressBar(QWidget):
                 border-radius: 3px;
             }}
         """)
-        
+
         # Label de porcentaje
         self.percentage_label = QLabel(f"{self._value}%")
-        self.percentage_label.setStyleSheet("""
+        self.percentage_label.setStyleSheet(f"""
             font-size: 11px;
-            color: #FFFFFF;
+            color: {TOKENS['TEXT_PRIMARY']};
             min-width: 35px;
+            background-color: transparent;
         """)
         self.percentage_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         
@@ -265,11 +270,11 @@ class ModernSidebar(QFrame):
         super().__init__(parent)
         self.setObjectName("ModernSidebar")
         self.setFixedWidth(200)
-        self.setStyleSheet("""
-            #ModernSidebar {
-                background-color: #252526;
-                border-right: 1px solid #3E3E42;
-            }
+        self.setStyleSheet(f"""
+            #ModernSidebar {{
+                background-color: {TOKENS['BACKGROUND']};
+                border-right: 1px solid {TOKENS['BORDER']};
+            }}
         """)
         
         # Layout principal
@@ -291,14 +296,16 @@ class ModernSidebar(QFrame):
         """Crea el header del sidebar con logo/título."""
         header = QLabel("LICITA MANAGE")
         header.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        header.setStyleSheet("""
-            QLabel {
-                color: #7C4DFF;
+        header.setStyleSheet(f"""
+            QLabel {{
+                color: {TOKENS['PRIMARY_ACCENT']};
                 font-size: 16px;
                 font-weight: bold;
                 padding: 20px 10px;
-                border-bottom: 1px solid #3E3E42;
-            }
+                background-color: transparent;
+                border: none;
+                border-bottom: 1px solid {TOKENS['BORDER']};
+            }}
         """)
         self._layout.addWidget(header)
         self._layout.addSpacing(20)
@@ -321,26 +328,26 @@ class ModernSidebar(QFrame):
         btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         
         btn.setFixedHeight(45)
-        btn.setStyleSheet("""
-            QPushButton {
+        btn.setStyleSheet(f"""
+            QPushButton {{
                 background-color: transparent;
-                color: #B0B0B0;
+                color: {TOKENS['TEXT_MUTED']};
                 border: none;
                 text-align: left;
                 padding-left: 20px;
                 font-size: 14px;
                 font-weight: 600;
-            }
-            QPushButton:hover {
-                background-color: #2D2D30;
-                color: #FFFFFF;
-            }
-            QPushButton:checked {
-                background-color: #37373D;
-                color: #7C4DFF;
-                border-left: 3px solid #7C4DFF;
+            }}
+            QPushButton:hover {{
+                background-color: {TOKENS['SURFACE_HOVER']};
+                color: {TOKENS['TEXT_PRIMARY']};
+            }}
+            QPushButton:checked {{
+                background-color: {TOKENS['SURFACE_HOVER']};
+                color: {TOKENS['PRIMARY_ACCENT']};
+                border-left: 3px solid {TOKENS['PRIMARY_ACCENT']};
                 padding-left: 17px;
-            }
+            }}
         """)
         btn.setCheckable(True)
         

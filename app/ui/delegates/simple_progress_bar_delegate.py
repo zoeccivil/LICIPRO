@@ -5,17 +5,20 @@ from PyQt6.QtCore import Qt, QRect
 from PyQt6.QtGui import QPainter, QColor, QPen, QBrush
 from PyQt6.QtWidgets import QStyledItemDelegate, QStyleOptionViewItem
 
+from app.ui.theme.emerald_light import TOKENS
+
 
 class SimpleProgressBarDelegate(QStyledItemDelegate):
     """
-    Delegate que dibuja una barra de progreso simple de izquierda a derecha (0-100%).
+    Delegate que dibuja una barra de progreso simple (0-100%) sobre el tema CLARO,
+    con acento verde esmeralda sobre un carril de fondo claro.
     """
-    
+
     def __init__(self, parent=None):
         super().__init__(parent)
-        self._bar_color = QColor("#7C4DFF")       # Morado
-        self._bg_color = QColor("#3E3E42")        # Gris oscuro
-        self._text_color = QColor("#FFFFFF")      # Blanco
+        self._bar_color = QColor(TOKENS["PRIMARY_ACCENT"])  # Esmeralda #059669
+        self._bg_color = QColor(TOKENS["BORDER"])           # Carril claro #E4E4E7
+        self._text_color = QColor(TOKENS["TEXT_PRIMARY"])   # Zinc oscuro #18181B
     
     def paint(self, painter: QPainter, option: QStyleOptionViewItem, index):
         """

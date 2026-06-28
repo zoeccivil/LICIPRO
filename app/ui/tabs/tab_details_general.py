@@ -18,7 +18,7 @@ from PyQt6.QtGui import QIcon, QDesktopServices
 from app.core.models import Licitacion, Empresa, Documento # Añade Documento
 from app.core.db_adapter import DatabaseAdapter
 # Importar diálogos necesarios (ajusta las rutas si es necesario)
-from app.ui.dialogs.seleccionar_empresas_dialog import SeleccionarEmpresasDialog
+from app.ui.dialogs.dialogo_gestionar_empresas import SeleccionarEmpresasDialog
 from app.ui.dialogs.gestion_documentos_dialog import GestionDocumentosDialog
 from app.ui.dialogs.ordenar_documentos_dialog import DialogoOrdenarDocumentos
 

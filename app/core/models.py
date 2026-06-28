@@ -214,29 +214,27 @@ class Licitacion:
         return total
 
     def get_diferencia_porcentual(self, solo_participados: bool = False, usar_base_personal: bool = True) -> float:
-        lotes = self.lotes
-        if solo_participados:
-            lotes = [l for l in lotes if l.participamos or (float(l.monto_ofertado or 0) > 0)]
-        base_total = 0.0
-        oferta_total = 0.0
-        for lote in lotes:
-            oferta = float(lote.monto_ofertado or 0)
-            if usar_base_personal:
-                base = float(lote.monto_base_personal or 0.0) or float(lote.monto_base or 0.0)
-            else:
-                base = float(lote.monto_base or 0.0)
-            base_total += base
-            oferta_total += oferta
-        if base_total == 0:
-            return 0.0
-        return ((oferta_total - base_total) / base_total) * 100.0
+        # Fuente única de verdad: servicio de dominio (import perezoso para evitar
+        # ciclos con app.core.__init__ -> models).
+        from app.core.logic.domain_service import diferencia_porcentual
+        return diferencia_porcentual(
+            self, usar_base_personal=usar_base_personal, solo_participados=solo_participados
+        )
 
     def get_porcentaje_completado(self) -> float:
-        total_docs = len(self.documentos_solicitados)
-        if total_docs == 0:
-            return 100.0 if self.docs_completos_manual else 0.0
-        docs_completados = sum(1 for d in self.documentos_solicitados if d.presentado and not d.requiere_subsanacion)
-        return (docs_completados / total_docs) * 100.0
+        from app.core.logic.domain_service import calcular_porcentaje_documentos
+        return calcular_porcentaje_documentos(self)
+
+    def get_dias_restantes(self) -> Optional[int]:
+        """Días hasta el próximo hito del cronograma (negativo si vencido, None si
+        no hay cronograma). Delegado al servicio de dominio."""
+        from app.core.logic.domain_service import calcular_dias_restantes
+        return calcular_dias_restantes(self)
+
+    def is_finalizada(self) -> bool:
+        """Criterio único de finalización (delegado al servicio de dominio)."""
+        from app.core.logic.domain_service import evaluar_estado_finalizado
+        return evaluar_estado_finalizado(self)
 
     def to_summary_dict(self) -> Dict[str, Any]:
         return {

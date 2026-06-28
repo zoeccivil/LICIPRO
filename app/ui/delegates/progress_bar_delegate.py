@@ -5,22 +5,24 @@ from PyQt6.QtCore import Qt, QRect
 from PyQt6.QtGui import QPainter, QColor, QPen, QBrush
 from PyQt6.QtWidgets import QStyledItemDelegate, QStyleOptionViewItem
 
+from app.ui.theme.emerald_light import TOKENS
+
 
 class ProgressBarDelegate(QStyledItemDelegate):
     """
-    Delegate que dibuja una barra de progreso centrada.
-    - Valores positivos: barra morada hacia la derecha
-    - Valores negativos: barra roja hacia la izquierda
-    - Línea central como referencia del 0%
+    Delegate que dibuja una barra de progreso centrada sobre el tema CLARO.
+    - Valores positivos: barra verde esmeralda hacia la derecha
+    - Valores negativos: barra roja sutil hacia la izquierda
+    - Carril de fondo claro y línea central como referencia del 0%
     """
-    
+
     def __init__(self, parent=None):
         super().__init__(parent)
-        self._bar_color_positive = QColor("#00C853")  # Verde para positivos
-        self._bar_color_negative = QColor("#FF5252")  # Rojo para negativos
-        self._bg_color = QColor("#3E3E42")            # Gris oscuro
-        self._text_color = QColor("#FFFFFF")          # Blanco
-        self._center_line_color = QColor("#5E5E62")   # Gris claro para línea central
+        self._bar_color_positive = QColor(TOKENS["PRIMARY_ACCENT"])  # Esmeralda #059669
+        self._bar_color_negative = QColor(TOKENS["ERROR_TEXT"])      # Rojo sutil #DC2626
+        self._bg_color = QColor(TOKENS["BORDER"])                    # Carril claro #E4E4E7
+        self._text_color = QColor(TOKENS["TEXT_PRIMARY"])            # Zinc oscuro #18181B
+        self._center_line_color = QColor(TOKENS["TEXT_MUTED"])       # Gris medio línea central
     
     def paint(self, painter: QPainter, option: QStyleOptionViewItem, index):
         """

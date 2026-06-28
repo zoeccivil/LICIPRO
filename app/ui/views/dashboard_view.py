@@ -16,6 +16,8 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtGui import QColor, QPalette, QGuiApplication
 
 from app.core.db_adapter import DatabaseAdapter
+from app.core.logic.domain_service import evaluar_estado_finalizado
+from app.ui.theme.emerald_light import TOKENS
 
 # Matplotlib (opcional)
 try:
@@ -27,6 +29,23 @@ except Exception:
     MATPLOTLIB_AVAILABLE = False
     FigureCanvas = None
     Figure = None
+
+
+def _theme_colors() -> dict:
+    """Paleta de la vista derivada de los Design Tokens del tema claro."""
+    return {
+        "accent": TOKENS["PRIMARY_ACCENT"],   # #059669
+        "text": TOKENS["TEXT_PRIMARY"],       # #18181B
+        "text_sec": TOKENS["TEXT_MUTED"],     # #71717A
+        "window": TOKENS["BACKGROUND"],       # #F9F9FB
+        "base": TOKENS["SURFACE"],            # #FFFFFF
+        "alt": TOKENS["SURFACE_ALT"],         # #FAFAFA
+        "border": TOKENS["BORDER"],           # #E4E4E7
+        "success": TOKENS["SUCCESS_TEXT"],
+        "danger": TOKENS["ERROR_TEXT"],
+        "warning": TOKENS["WARNING_TEXT"],
+        "info": TOKENS["INFO_TEXT"],
+    }
 
 
 class DashboardView(QWidget):
@@ -52,33 +71,9 @@ class DashboardView(QWidget):
         self.refresh_stats()
     
     def _resolve_theme_colors(self):
-        """Obtiene colores del tema activo."""
-        app = QGuiApplication.instance()
-        pal: QPalette = app.palette() if app else QPalette()
-        
-        def get_color(role: QPalette.ColorRole, fallback: str) -> str:
-            try:
-                color = pal.color(role)
-                if color.isValid():
-                    return color.name()
-            except Exception:
-                pass
-            return fallback
-        
-        self.colors = {
-            "accent": get_color(QPalette.ColorRole.Highlight, "#7C4DFF"),
-            "text": get_color(QPalette.ColorRole.Text, "#E6E9EF"),
-            "text_sec": get_color(QPalette.ColorRole.PlaceholderText, "#B9C0CC"),
-            "window": get_color(QPalette.ColorRole.Window, "#1E1E1E"),
-            "base": get_color(QPalette.ColorRole.Base, "#252526"),
-            "alt": get_color(QPalette.ColorRole.AlternateBase, "#2D2D30"),
-            "border": get_color(QPalette.ColorRole.Mid, "#3A4152"),
-            "success": "#00C853",
-            "danger": "#FF5252",
-            "warning": "#FFA726",
-            "info": "#448AFF",
-        }
-    
+        """Paleta de la vista derivada de los Design Tokens del tema claro."""
+        self.colors = _theme_colors()
+
     def _setup_ui(self):
         """Configura la interfaz del dashboard."""
         # Layout principal con scroll
@@ -101,8 +96,9 @@ class DashboardView(QWidget):
             QLabel {{
                 font-size: 28pt;
                 font-weight: bold;
-                color: {self.colors['accent']};
+                color: {self.colors['text']};
                 padding: 10px 0;
+                background: transparent;
             }}
         """)
         content_layout.addWidget(title)
@@ -170,21 +166,14 @@ class DashboardView(QWidget):
     def _create_kpi_card(self, title: str, value: str, color: str, icon: str) -> QFrame:
         """Crea una card de KPI con gradiente."""
         card = QFrame()
-        
-        # Crear gradiente de color
-        # Convertir color hex a RGB para gradiente
-        from PyQt6.QtGui import QColor
-        qcolor = QColor(color)
-        r, g, b = qcolor.red(), qcolor.green(), qcolor.blue()
-        
+
+        # Tarjeta premium clara: fondo blanco, borde sutil e indicador
+        # vertical semántico a la izquierda (coherente con StatCard).
         card.setStyleSheet(f"""
             QFrame {{
-                background: qlineargradient(
-                    x1:0, y1:0, x2:1, y2:1,
-                    stop:0 {self.colors['base']},
-                    stop:1 rgba({r}, {g}, {b}, 30)
-                );
-                border: 2px solid {color};
+                background-color: {self.colors['base']};
+                border: 1px solid {self.colors['border']};
+                border-left: 3px solid {color};
                 border-radius: 12px;
             }}
         """)
@@ -245,41 +234,6 @@ class DashboardView(QWidget):
         
         return card
     
-    def _resolve_theme_colors(self):
-        """Obtiene colores del tema activo."""
-        app = QGuiApplication.instance()
-        pal: QPalette = app.palette() if app else QPalette()
-        
-        def get_color(role: QPalette.ColorRole, fallback: str) -> str:
-            try:
-                color = pal.color(role)
-                if color.isValid():
-                    return color.name()
-            except Exception:
-                pass
-            return fallback
-        
-        # ✅ CORRECCIÓN: Usar colores más claros para mejor contraste
-        self.colors = {
-            "accent": get_color(QPalette.ColorRole.Highlight, "#7C4DFF"),
-            "text": get_color(QPalette.ColorRole.Text, "#E6E9EF"),
-            "text_sec": get_color(QPalette.ColorRole.PlaceholderText, "#B9C0CC"),
-            "window": get_color(QPalette.ColorRole.Window, "#1E1E1E"),
-            "base": "#2D2D30",  # ✅ Forzar color más claro para las cards
-            "alt": get_color(QPalette.ColorRole.AlternateBase, "#2D2D30"),
-            "border": "#5E5E62",  # ✅ Borde más visible
-            "success": "#00C853",
-            "danger": "#FF5252",
-            "warning": "#FFA726",
-            "info": "#448AFF",
-        }
-        
-        # ✅ DEBUG: Imprimir colores para verificar
-        print("[DEBUG] Colores del dashboard:")
-        for key, value in self.colors.items():
-            print(f"  {key}: {value}")
-
-
     def _create_pie_chart_widget(self) -> QGroupBox:
         """Crea widget con gráfico de pastel."""
         box = QGroupBox("Distribución por Estado")
@@ -478,28 +432,17 @@ class DashboardView(QWidget):
         monto_base_total = 0.0
         monto_ofertado_total = 0.0
         
-        # ✅ CORRECCIÓN: Definir estados finalizados explícitamente
-        estados_finalizados = {
-            'adjudicada', 'ganada', 'perdida', 'cancelada', 'desierta',
-            'descalificado', 'descalificada', 'anulada', 'archivada',
-            'desistida', 'rechazada', 'no adjudicada'
-        }
-        
         for lic in self._licitaciones:
             estado_raw = getattr(lic, 'estado', '') or ''
             estado = estado_raw.lower().strip()
-            
+
             # Registrar estado en contador
             if estado:
                 estados_count[estado] += 1
-            
-            # ✅ CORRECCIÓN: Contar activas (todo lo que NO esté finalizado)
-            es_finalizada = False
-            for estado_fin in estados_finalizados:
-                if estado_fin in estado:
-                    es_finalizada = True
-                    break
-            
+
+            # Activas = todo lo que NO esté finalizado, según el criterio ÚNICO
+            # del servicio de dominio (misma regla que el filtro de la tabla).
+            es_finalizada = evaluar_estado_finalizado(lic)
             if not es_finalizada and estado:
                 activas += 1
             
@@ -576,8 +519,9 @@ class DashboardView(QWidget):
         # Limpiar figura
         self.pie_canvas.figure.clear()
         ax = self.pie_canvas.figure.add_subplot(111)
-        
-        # Configurar colores del tema
+
+        # Configurar colores del tema (fondo blanco del lienzo y del área)
+        self.pie_canvas.figure.patch.set_facecolor(self.colors['base'])
         ax.set_facecolor(self.colors['base'])
         
         # Datos
@@ -619,8 +563,9 @@ class DashboardView(QWidget):
         # Limpiar figura
         self.line_canvas.figure.clear()
         ax = self.line_canvas.figure.add_subplot(111)
-        
-        # Configurar tema
+
+        # Configurar tema (fondo blanco del lienzo y del área, ejes oscuros)
+        self.line_canvas.figure.patch.set_facecolor(self.colors['base'])
         ax.set_facecolor(self.colors['base'])
         ax.tick_params(colors=self.colors['text'], labelsize=9)
         for spine in ax.spines.values():

@@ -54,3 +54,16 @@ error_log.txt
 *.spec
 build/
 dist/
+
+# LICIPRO - Artefactos locales (NUNCA versionar)
+# Caché local de Firestore (.pkl)
+.cache/
+.cache/licitaciones_firestore.pkl
+*.pkl
+# Volcados de depuración
+debug.txt
+debug_cache.txt
+*[DEBUG]*.txt
+# Logs de la aplicación
+logs/
+logs/*.log

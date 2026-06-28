@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import datetime as _dt
+import threading
 import unicodedata
 from typing import Any, Callable, Dict, Iterable, List, Optional
 import pickle
@@ -9,6 +10,8 @@ from pathlib import Path
 from datetime import datetime, timedelta
 
 from google.cloud.firestore import Client
+
+from app.core.state.edit_lock import get_edit_lock_registry
 
 from .firebase_adapter import (
     add_doc,
@@ -67,10 +70,16 @@ class DatabaseAdapter:
     def __init__(self, client: Optional[Client] = None) -> None:
         self._client = client
         self._subscriptions: List[Callable[[], None]] = []
-        
+
+        # 🔒 Lock reentrante para proteger memoria + archivo .pkl frente al hilo
+        # de fondo de Firestore (on_snapshot) y el hilo de la UI (save/refresh).
+        self._cache_lock = threading.RLock()
+        # Referencia a la suscripción de licitaciones (evita doble suscripción).
+        self._licitaciones_unsub: Optional[Callable[[], None]] = None
+
         # ✅ Caché en memoria
         self._all_licitaciones: List[Licitacion] = []
-        
+
         # ✅ NUEVO: Guardar caché en la raíz del proyecto
         from pathlib import Path
         project_root = Path(__file__).parent.parent.parent  # app/core/db_adapter.py -> raíz
@@ -93,13 +102,14 @@ class DatabaseAdapter:
         logger.debug("DatabaseAdapter.open() - Firestore no requiere abrir conexión")
 
     def close(self) -> None:
-        """Cierra subscripciones activas."""
+        """Cierra subscripciones activas de forma limpia."""
         for unsubscribe in self._subscriptions:
             try:
                 unsubscribe()
             except Exception:
                 pass
         self._subscriptions.clear()
+        self._licitaciones_unsub = None
 
     # ------------------------------------------------------------------
     # Firestore helpers
@@ -119,87 +129,135 @@ class DatabaseAdapter:
         Returns:
             True si se cargó correctamente, False en caso contrario.
         """
-        if not self._cache_file.exists():
-            return False
-        
-        try:
-            # Verificar antigüedad del caché
-            cache_mtime = datetime.fromtimestamp(self._cache_file.stat().st_mtime)
-            cache_age = datetime.now() - cache_mtime
-            
-            if cache_age > self._cache_duration:
-                logger.info(f"Caché expirado ({cache_age.total_seconds() / 60:.1f} minutos), se descartará")
-                self._cache_file.unlink()
+        with self._cache_lock:
+            if not self._cache_file.exists():
                 return False
-            
-            # Cargar desde caché
-            with open(self._cache_file, 'rb') as f:
-                self._all_licitaciones = pickle.load(f)
-            
-            print(f"[INFO] ✓ {len(self._all_licitaciones)} licitaciones cargadas desde caché")
-            print(f"[DEBUG] Caché tiene {cache_age.total_seconds() / 60:.1f} minutos de antigüedad")
-            logger.info(f"✓ {len(self._all_licitaciones)} licitaciones cargadas desde caché")
-            return True
-            
-        except Exception as e:
-            logger.warning(f"Error leyendo caché: {e}")
-            if self._cache_file.exists():
-                try:
+
+            try:
+                # Verificar antigüedad del caché
+                cache_mtime = datetime.fromtimestamp(self._cache_file.stat().st_mtime)
+                cache_age = datetime.now() - cache_mtime
+
+                if cache_age > self._cache_duration:
+                    logger.info(f"Caché expirado ({cache_age.total_seconds() / 60:.1f} minutos), se descartará")
                     self._cache_file.unlink()
-                except Exception:
-                    pass
-            return False
+                    return False
+
+                # Cargar desde caché
+                with open(self._cache_file, 'rb') as f:
+                    self._all_licitaciones = pickle.load(f)
+
+                print(f"[INFO] ✓ {len(self._all_licitaciones)} licitaciones cargadas desde caché")
+                print(f"[DEBUG] Caché tiene {cache_age.total_seconds() / 60:.1f} minutos de antigüedad")
+                logger.info(f"✓ {len(self._all_licitaciones)} licitaciones cargadas desde caché")
+                return True
+
+            except Exception as e:
+                logger.warning(f"Error leyendo caché: {e}")
+                if self._cache_file.exists():
+                    try:
+                        self._cache_file.unlink()
+                    except Exception:
+                        pass
+                return False
     
     def _save_to_cache(self):
-        """Guarda las licitaciones actuales en el caché."""
-        if not self._all_licitaciones:
-            print("[DEBUG] No hay datos para guardar en caché")
-            logger.debug("No hay datos para guardar en caché")
-            return
-        
-        try:
-            with open(self._cache_file, 'wb') as f:
-                pickle.dump(self._all_licitaciones, f)
-            
-            # Mostrar tamaño del archivo
-            size_mb = self._cache_file.stat().st_size / (1024 * 1024)
-            print(f"[INFO] ✓ Caché guardado: {len(self._all_licitaciones)} licitaciones ({size_mb:.2f} MB)")
-            
-           
-            logger.info(f"✓ Caché guardado: {len(self._all_licitaciones)} licitaciones ({size_mb:.2f} MB)")
-            
-        except Exception as e:
-            print(f"[WARNING] Error guardando caché: {e}")
-            logger.warning(f"Error guardando caché: {e}")
-            import traceback
-            traceback.print_exc()
+        """Guarda las licitaciones actuales en el caché (thread-safe)."""
+        with self._cache_lock:
+            if not self._all_licitaciones:
+                print("[DEBUG] No hay datos para guardar en caché")
+                logger.debug("No hay datos para guardar en caché")
+                return
+
+            try:
+                with open(self._cache_file, 'wb') as f:
+                    pickle.dump(self._all_licitaciones, f)
+
+                # Mostrar tamaño del archivo
+                size_mb = self._cache_file.stat().st_size / (1024 * 1024)
+                print(f"[INFO] ✓ Caché guardado: {len(self._all_licitaciones)} licitaciones ({size_mb:.2f} MB)")
+                logger.info(f"✓ Caché guardado: {len(self._all_licitaciones)} licitaciones ({size_mb:.2f} MB)")
+
+            except Exception as e:
+                print(f"[WARNING] Error guardando caché: {e}")
+                logger.warning(f"Error guardando caché: {e}")
+                import traceback
+                traceback.print_exc()
     
     def invalidate_cache(self):
         """
-        Invalida el caché actual.
+        Invalida el caché actual (memoria + archivo .pkl) de forma thread-safe.
         Debe llamarse después de guardar/modificar/eliminar licitaciones.
         """
-        if self._cache_file.exists():
-            try:
-                self._cache_file.unlink()
-                logger.info("✓ Caché invalidado")
-            except Exception as e:
-                logger.warning(f"Error eliminando caché: {e}")
-        
-        self._all_licitaciones = []
+        with self._cache_lock:
+            if self._cache_file.exists():
+                try:
+                    self._cache_file.unlink()
+                    logger.info("✓ Caché invalidado")
+                except Exception as e:
+                    logger.warning(f"Error eliminando caché: {e}")
+
+            self._all_licitaciones = []
 
     # ------------------------------------------------------------------
     # Licitaciones CRUD (CON CACHÉ)
     # ------------------------------------------------------------------
     def subscribe_to_licitaciones(self, callback: Callable[[List[Licitacion]], None]) -> None:
-        """Suscripción en tiempo real a cambios en Firestore."""
+        """
+        Suscripción en tiempo real a cambios en Firestore.
+
+        Blindaje de concurrencia (autosave ↔ on_snapshot):
+        - Para cada documento entrante, si su ID está BLOQUEADO porque el usuario
+          lo está editando localmente (o tiene un autosave en cola), se IGNORA la
+          versión remota y se preserva la copia local en memoria. Así no se pisan
+          los cambios que el usuario aún está escribiendo.
+        - La actualización de la memoria es thread-safe (corre en el hilo de fondo
+          del SDK de Firestore). NO se invalida el .pkl en tiempo real.
+        - Idempotente: si ya hay una suscripción activa, no se vuelve a suscribir.
+        """
+        if self._licitaciones_unsub is not None:
+            logger.debug("subscribe_to_licitaciones: ya suscrito, se omite re-suscripción")
+            return
+
+        registry = get_edit_lock_registry()
+
         def _on_update(items: List[Dict[str, Any]]):
-            # ✅ NO invalidar caché en sincronización en tiempo real
-            # El caché debe persistir entre sesiones
-            print("[DEBUG] Sincronización en tiempo real: datos actualizados (caché preservado)")
-            callback([self._map_licitacion_dict_to_model(item) for item in items])
+            locked = registry.snapshot()
+
+            with self._cache_lock:
+                # Índice de la versión local vigente por ID (para preservar).
+                current_by_id = {
+                    str(getattr(l, "id", None)): l
+                    for l in self._all_licitaciones
+                    if getattr(l, "id", None) is not None
+                }
+
+                mapped: List[Licitacion] = []
+                preservados = 0
+                for item in items:
+                    item_id = item.get("id")
+                    item_id_str = str(item_id) if item_id is not None else None
+
+                    if item_id_str and item_id_str in locked and item_id_str in current_by_id:
+                        # ⛔ ID en edición: preservar la versión local (no pisar).
+                        mapped.append(current_by_id[item_id_str])
+                        preservados += 1
+                    else:
+                        mapped.append(self._map_licitacion_dict_to_model(item))
+
+                # ✅ Mantener la memoria coherente, SIN invalidar el .pkl (la
+                # sincronización en tiempo real preserva el caché entre sesiones).
+                self._all_licitaciones = mapped
+
+            if preservados:
+                print(f"[DEBUG] Tiempo real: {preservados} licitación(es) en edición preservada(s) (locks: {sorted(locked)})")
+            else:
+                print("[DEBUG] Sincronización en tiempo real: datos actualizados (caché preservado)")
+
+            callback(mapped)
 
         unsubscribe = subscribe_collection(LICITACIONES_COLLECTION, _on_update)
+        self._licitaciones_unsub = unsubscribe
         self._subscriptions.append(unsubscribe)
 
     def load_all_licitaciones(self, force_refresh: bool = False) -> List[Licitacion]:

@@ -1,203 +1,172 @@
-from __future__ import annotations
-from typing import List, Dict, Any, Optional
+"""
+Catálogo de Competidores.
 
-from PyQt6.QtCore import Qt
+DialogoGestionarCompetidores: gestor (CRUD) — subclase fina del componente
+genérico BaseMasterManagerDialog.
+
+DialogoSeleccionarCompetidores: selector MÚLTIPLE de competidores (checkboxes) —
+consolidado aquí desde el antiguo 'dialogo_seleccionar_competidores.py'.
+"""
+from __future__ import annotations
+from typing import Any, Dict, List, Set
+
+from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QGroupBox,
-    QTableWidget, QTableWidgetItem, QHeaderView, QMessageBox, QWidget, QFormLayout
+    QDialog, QVBoxLayout, QHBoxLayout, QLineEdit, QTableWidget, QTableWidgetItem,
+    QAbstractItemView, QHeaderView, QDialogButtonBox, QLabel,
 )
 
-from app.core.db_adapter import DatabaseAdapter
-from app.ui.utils.icon_utils import check_icon
+from app.core.models import Oferente
+from app.ui.dialogs.base_master_dialog import BaseMasterManagerDialog, MasterEntityConfig
 
-class DialogoGestionarCompetidores(QDialog):
-    COL_NOM = 0
-    COL_RNC = 1
-    COL_RPE = 2
-    COL_REP = 3
 
-    def __init__(self, parent, db: DatabaseAdapter):
-        super().__init__(parent)
+class DialogoGestionarCompetidores(BaseMasterManagerDialog):
+    """Gestor del catálogo de competidores (CRUD + guardar)."""
+
+    def __init__(self, parent, db):
         self.db = db
-        self.setWindowTitle("Catálogo de Competidores")
-        self.resize(900, 560)
-        self.setModal(True)
+        config = MasterEntityConfig(
+            title="Catálogo de Competidores",
+            columns=[
+                ("Nombre", "nombre"), ("RNC", "rnc"),
+                ("No. RPE", "rpe"), ("Representante", "representante"),
+            ],
+            form_fields=[
+                ("Nombre", "nombre"), ("RNC", "rnc"),
+                ("No. RPE", "rpe"), ("Representante", "representante"),
+            ],
+            load_fn=lambda: db.get_competidores_maestros() or [],
+            save_fn=db.save_competidores_maestros,
+            key_field="nombre",
+            entity_name="competidor",
+        )
+        super().__init__(parent, config, mode=self.MODE_MANAGE)
 
-        self._items: List[Dict[str, Any]] = list(self.db.get_competidores_maestros() or [])
-        self._filtered: List[Dict[str, Any]] = list(self._items)
+
+# Índices de columnas para el selector múltiple
+COL_SEL = 0
+COL_NOMBRE = 1
+COL_RNC = 2
+
+
+class DialogoSeleccionarCompetidores(QDialog):
+    """
+    Diálogo para seleccionar MÚLTIPLES competidores de una lista maestra, con búsqueda.
+    """
+    def __init__(self, parent,
+                 competidores_maestros: List[Dict[str, Any]],
+                 oferentes_actuales: List[Oferente]):
+        super().__init__(parent)
+        self.setWindowTitle("Seleccionar Competidores desde Catálogo")
+        self.setMinimumSize(600, 450)
+
+        nombres_actuales_lower = {o.nombre.lower() for o in oferentes_actuales}
+        self.competidores_disponibles = sorted(
+            [c for c in competidores_maestros if c.get('nombre', '').lower() not in nombres_actuales_lower],
+            key=lambda x: x.get('nombre', '')
+        )
+        self.competidores_filtrados = self.competidores_disponibles[:]
+
+        self.seleccionados: Set[str] = set()
+        self.result: List[Dict[str, Any]] = []
+
+        self._search_timer = QTimer(self)
+        self._search_timer.setSingleShot(True)
+        self._search_timer.setInterval(250)
+        self._search_timer.timeout.connect(self._filtrar_y_poblar)
 
         self._build_ui()
-        self._populate()
+        self._poblar_tabla()
 
     def _build_ui(self):
-        root = QVBoxLayout(self)
+        main_layout = QVBoxLayout(self)
 
-        filt = QGroupBox("Buscar")
-        fl = QHBoxLayout(filt)
-        self.txt_search = QLineEdit()
-        self.txt_search.setPlaceholderText("Buscar por nombre o RNC…")
-        self.txt_search.textChanged.connect(self._apply_filter)
-        fl.addWidget(self.txt_search, 1)
-        root.addWidget(filt)
+        search_layout = QHBoxLayout()
+        search_layout.addWidget(QLabel("Buscar:"))
+        self.search_edit = QLineEdit()
+        self.search_edit.setPlaceholderText("Filtrar por nombre o RNC...")
+        self.search_edit.textChanged.connect(self._search_timer.start)
+        search_layout.addWidget(self.search_edit)
+        main_layout.addLayout(search_layout)
 
-        self.tbl = QTableWidget(0, 4)
-        self.tbl.setHorizontalHeaderLabels(["Nombre", "RNC", "No. RPE", "Representante"])
-        self.tbl.verticalHeader().setVisible(False)
-        self.tbl.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        self.tbl.setSelectionBehavior(self.tbl.SelectionBehavior.SelectRows)
-        self.tbl.setSelectionMode(self.tbl.SelectionMode.SingleSelection)
-        self.tbl.horizontalHeader().setSectionResizeMode(self.COL_NOM, QHeaderView.ResizeMode.Stretch)
-        self.tbl.horizontalHeader().setSectionResizeMode(self.COL_RNC, QHeaderView.ResizeMode.ResizeToContents)
-        self.tbl.horizontalHeader().setSectionResizeMode(self.COL_RPE, QHeaderView.ResizeMode.ResizeToContents)
-        self.tbl.horizontalHeader().setSectionResizeMode(self.COL_REP, QHeaderView.ResizeMode.Stretch)
-        root.addWidget(self.tbl, 1)
+        self.table = QTableWidget()
+        self.table.setColumnCount(3)
+        self.table.setHorizontalHeaderLabels(["Sel.", "Nombre del Competidor", "RNC"])
+        self.table.verticalHeader().setVisible(False)
+        self.table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
+        self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
 
-        actions = QHBoxLayout()
-        self.btn_add = QPushButton("Agregar")
-        self.btn_edit = QPushButton("Editar")
-        self.btn_del = QPushButton("Eliminar")
-        self.btn_close = QPushButton("Guardar Cambios y Cerrar")
-        self.btn_close.setIcon(check_icon())
-        self.btn_add.clicked.connect(self._add)
-        self.btn_edit.clicked.connect(self._edit)
-        self.btn_del.clicked.connect(self._del)
-        self.btn_close.clicked.connect(self._save_and_close)
-        for b in (self.btn_add, self.btn_edit, self.btn_del):
-            actions.addWidget(b)
-        actions.addStretch(1)
-        actions.addWidget(self.btn_close)
-        root.addLayout(actions)
+        header = self.table.horizontalHeader()
+        header.setSectionResizeMode(COL_SEL, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(COL_NOMBRE, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(COL_RNC, QHeaderView.ResizeMode.Interactive)
+        self.table.setColumnWidth(COL_RNC, 120)
+        main_layout.addWidget(self.table)
 
-        self.tbl.itemSelectionChanged.connect(self._update_actions)
-        self._update_actions()
+        self.table.cellClicked.connect(self._on_cell_clicked)
 
-    def _apply_filter(self):
-        term = (self.txt_search.text() or "").strip().lower()
-        if not term:
-            self._filtered = list(self._items)
+        self.button_box = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        self.button_box.accepted.connect(self.accept)
+        self.button_box.rejected.connect(self.reject)
+        main_layout.addWidget(self.button_box)
+
+    def _filtrar_y_poblar(self):
+        termino = self.search_edit.text().strip().lower()
+        if not termino:
+            self.competidores_filtrados = self.competidores_disponibles[:]
         else:
-            self._filtered = [
-                c for c in self._items
-                if term in (c.get("nombre", "") or "").lower() or term in (c.get("rnc", "") or "").lower()
+            self.competidores_filtrados = [
+                c for c in self.competidores_disponibles
+                if termino in c.get('nombre', '').lower() or termino in (c.get('rnc', '') or '').lower()
             ]
-        self._populate()
+        self._poblar_tabla()
 
-    def _populate(self):
-        self.tbl.setRowCount(0)
-        for c in sorted(self._filtered, key=lambda x: (x.get("nombre", "") or "")):
-            row = self.tbl.rowCount()
-            self.tbl.insertRow(row)
-            vals = (
-                c.get("nombre", "") or "",
-                c.get("rnc", "") or "",
-                c.get("rpe", "") or "",
-                c.get("representante", "") or "",
-            )
-            for col, text in enumerate(vals):
-                self.tbl.setItem(row, col, QTableWidgetItem(text))
-            self.tbl.setRowHeight(row, 24)
-        self._update_actions()
+    def _poblar_tabla(self):
+        self.table.setRowCount(0)
+        self.table.setRowCount(len(self.competidores_filtrados))
 
-    def _current(self) -> Optional[Dict[str, Any]]:
-        r = self.tbl.currentRow()
-        if r < 0:
-            return None
-        name = self.tbl.item(r, self.COL_NOM).text()
-        for c in self._items:
-            if (c.get("nombre", "") or "") == name:
-                return c
-        return None
+        for row, comp_dict in enumerate(self.competidores_filtrados):
+            nombre = comp_dict.get('nombre', '')
+            rnc = comp_dict.get('rnc', '')
 
-    def _update_actions(self):
-        has = self._current() is not None
-        self.btn_edit.setEnabled(has)
-        self.btn_del.setEnabled(has)
+            item_sel = QTableWidgetItem()
+            item_sel.setFlags(Qt.ItemFlag.ItemIsUserCheckable | Qt.ItemFlag.ItemIsEnabled)
+            check_state = Qt.CheckState.Checked if nombre in self.seleccionados else Qt.CheckState.Unchecked
+            item_sel.setCheckState(check_state)
+            item_sel.setData(Qt.ItemDataRole.UserRole, nombre)
+            self.table.setItem(row, COL_SEL, item_sel)
 
-    def _add(self):
-        dlg = _CompetidorForm(self, "Agregar Competidor")
-        if dlg.exec() != QDialog.DialogCode.Accepted:
-            return
-        data = dlg.data()
-        if not data.get("nombre"):
-            QMessageBox.warning(self, "Datos", "El nombre es obligatorio.")
-            return
-        if any((c.get("nombre", "") or "").lower() == data["nombre"].lower() for c in self._items):
-            QMessageBox.warning(self, "Duplicado", "Ya existe un competidor con ese nombre.")
-            return
-        if data.get("rnc") and any((c.get("rnc", "") or "").lower() == data["rnc"].lower() and (c.get("rnc", "") or "") for c in self._items):
-            QMessageBox.warning(self, "Duplicado", "Ya existe un competidor con ese RNC.")
-            return
-        self._items.append(data)
-        self._apply_filter()
+            item_nombre = QTableWidgetItem(nombre)
+            item_nombre.setFlags(Qt.ItemFlag.ItemIsEnabled)
+            self.table.setItem(row, COL_NOMBRE, item_nombre)
 
-    def _edit(self):
-        item = self._current()
-        if not item:
-            return
-        dlg = _CompetidorForm(self, "Editar Competidor", initial=item)
-        if dlg.exec() != QDialog.DialogCode.Accepted:
-            return
-        data = dlg.data()
-        # validar duplicados si cambian nombre/rnc
-        if data.get("nombre", "").lower() != (item.get("nombre", "") or "").lower():
-            if any((c.get("nombre", "") or "").lower() == data["nombre"].lower() for c in self._items):
-                QMessageBox.warning(self, "Duplicado", "Ya existe un competidor con ese nombre.")
-                return
-        if data.get("rnc", "").lower() != (item.get("rnc", "") or "").lower() and data.get("rnc"):
-            if any((c.get("rnc", "") or "").lower() == data["rnc"].lower() and (c.get("rnc", "") or "") for c in self._items):
-                QMessageBox.warning(self, "Duplicado", "Ya existe un competidor con ese RNC.")
-                return
-        item.update(data)
-        self._apply_filter()
+            item_rnc = QTableWidgetItem(rnc)
+            item_rnc.setFlags(Qt.ItemFlag.ItemIsEnabled)
+            self.table.setItem(row, COL_RNC, item_rnc)
 
-    def _del(self):
-        item = self._current()
-        if not item:
+    def _on_cell_clicked(self, row: int, column: int):
+        item_sel = self.table.item(row, COL_SEL)
+        if not item_sel:
             return
-        if QMessageBox.question(self, "Confirmar", f"¿Eliminar a '{item.get('nombre','')}'?",
-                                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                                QMessageBox.StandardButton.No) != QMessageBox.StandardButton.Yes:
+        nombre = item_sel.data(Qt.ItemDataRole.UserRole)
+        if not nombre:
             return
-        self._items = [c for c in self._items if c is not item]
-        self._apply_filter()
-
-    def _save_and_close(self):
-        ok = self.db.save_competidores_maestros(self._items)
-        if ok:
-            QMessageBox.information(self, "Guardar", "Cambios guardados.")
-            self.accept()
+        current_state = item_sel.checkState()
+        new_state = Qt.CheckState.Unchecked if current_state == Qt.CheckState.Checked else Qt.CheckState.Checked
+        item_sel.setCheckState(new_state)
+        if new_state == Qt.CheckState.Checked:
+            self.seleccionados.add(nombre)
         else:
-            QMessageBox.warning(self, "Error", "No se pudieron guardar los cambios.")
+            self.seleccionados.discard(nombre)
 
+    def accept(self):
+        self.result = [
+            comp_dict for comp_dict in self.competidores_disponibles
+            if comp_dict.get('nombre') in self.seleccionados
+        ]
+        super().accept()
 
-class _CompetidorForm(QDialog):
-    def __init__(self, parent, titulo: str, initial: Optional[Dict[str, Any]] = None):
-        super().__init__(parent)
-        self.setWindowTitle(titulo)
-        self.setModal(True)
-        self.resize(520, 200)
-        init = initial or {}
-
-        form = QFormLayout(self)
-        self.txt_nom = QLineEdit(init.get("nombre", ""))
-        form.addRow("Nombre:", self.txt_nom)
-        self.txt_rnc = QLineEdit(init.get("rnc", ""))
-        form.addRow("RNC:", self.txt_rnc)
-        self.txt_rpe = QLineEdit(init.get("rpe", ""))
-        form.addRow("No. RPE:", self.txt_rpe)
-        self.txt_rep = QLineEdit(init.get("representante", ""))
-        form.addRow("Representante:", self.txt_rep)
-
-        btns = QHBoxLayout()
-        b_ok = QPushButton("Guardar"); b_cancel = QPushButton("Cancelar")
-        b_ok.clicked.connect(self.accept); b_cancel.clicked.connect(self.reject)
-        btns.addStretch(1); btns.addWidget(b_ok); btns.addWidget(b_cancel)
-        form.addRow(btns)
-
-    def data(self) -> Dict[str, Any]:
-        return {
-            "nombre": self.txt_nom.text().strip(),
-            "rnc": self.txt_rnc.text().strip(),
-            "rpe": self.txt_rpe.text().strip(),
-            "representante": self.txt_rep.text().strip(),
-        }
+    def get_seleccionados(self) -> List[Dict[str, Any]]:
+        return self.result

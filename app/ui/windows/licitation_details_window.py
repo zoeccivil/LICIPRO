@@ -27,6 +27,7 @@ from PyQt6.QtGui import QShortcut, QKeySequence, QPalette, QBrush, QColor
 # Modelos y DB
 from app.core.models import Licitacion, Empresa, Lote, Documento
 from app.core.db_adapter import DatabaseAdapter
+from app.core.state.edit_lock import get_edit_lock_registry
 
 # Pestañas
 from app.core.utils import normalize_lote_numero
@@ -35,9 +36,11 @@ from app.ui.tabs.tab_lotes import TabLotes
 from app.ui.tabs.tab_competitors import TabCompetitors  # Import correcto (sin alias extraño)
 
 # Diálogos
-from app.ui.dialogs.dialogo_seleccionar_institucion import DialogoSeleccionarInstitucion
-from app.ui.dialogs.dialogo_gestionar_instituciones import DialogoGestionarInstituciones
-from app.ui.dialogs.seleccionar_empresas_dialog import SeleccionarEmpresasDialog
+from app.ui.dialogs.dialogo_gestionar_instituciones import (
+    DialogoSeleccionarInstitucion,
+    DialogoGestionarInstituciones,
+)
+from app.ui.dialogs.dialogo_gestionar_empresas import SeleccionarEmpresasDialog
 from app.core.log_utils import get_logger
 logger = get_logger("licitation_details_window")
 from app.core.utils import normalize_lote_numero
@@ -169,7 +172,13 @@ class LicitationDetailsWindow(QDialog):
         self._last_snapshot = self._snapshot_model()
 
         self._change_log = deque(maxlen=200)
-        
+
+        # 🔒 Bloqueo de edición (concurrencia con on_snapshot de Firestore):
+        # mientras esta ventana esté abierta editando esta licitación, la
+        # sincronización en tiempo real preservará la versión local de su ID.
+        self._edit_lock_registry = get_edit_lock_registry()
+        self._acquire_edit_lock()
+
         # DEBUG final:  Confirmar que todas las pestañas tienen la misma referencia
         print(f"[DEBUG][LicitationDetailsWindow.__init__] Verificación de referencias:")
         print(f"  - id(self.licitacion):          {id(self.licitacion)}")
@@ -1620,6 +1629,81 @@ class LicitationDetailsWindow(QDialog):
 
 
 
+    # ------------------------------------------------------------------
+    # 🔒 Bloqueo de edición vs sincronización en tiempo real
+    # ------------------------------------------------------------------
+    def _acquire_edit_lock(self) -> None:
+        """Marca el ID de esta licitación como en edición (si ya tiene id)."""
+        try:
+            lic_id = getattr(self.licitacion, "id", None)
+            if lic_id:
+                self._edit_lock_registry.acquire(lic_id)
+                self._locked_id = str(lic_id)
+        except Exception:
+            pass
+
+    def _release_edit_lock(self) -> None:
+        """Libera el bloqueo de edición de esta licitación."""
+        try:
+            # Liberar el id actual y cualquier id previamente bloqueado (p.ej. si
+            # se asignó un nuevo id tras el primer guardado).
+            lic_id = getattr(self.licitacion, "id", None)
+            if lic_id:
+                self._edit_lock_registry.release(lic_id)
+            prev = getattr(self, "_locked_id", None)
+            if prev:
+                self._edit_lock_registry.release(prev)
+            self._locked_id = None
+        except Exception:
+            pass
+
+    def done(self, result):
+        """Punto único de cierre del diálogo (accept/reject): detiene el autosave
+        pendiente y libera el bloqueo de edición."""
+        try:
+            if hasattr(self, "_autosave_timer"):
+                self._autosave_timer.stop()
+        except Exception:
+            pass
+        self._release_edit_lock()
+        super().done(result)
+
+    # ------------------------------------------------------------------
+    # 🪟 Modo Side Sheet (incrustado en el workspace, no flotante)
+    # ------------------------------------------------------------------
+    def embed_as_panel(self) -> None:
+        """Prepara el formulario para incrustarse en un panel lateral (no modal).
+        Oculta los botones propios de diálogo modal ('Guardar y Cerrar' y
+        'Cancelar'): gracias al autosave blindado, basta con cerrar el panel o
+        cambiar de fila para que los datos queden a salvo."""
+        try:
+            self.setWindowFlags(Qt.WindowType.Widget)
+        except Exception:
+            pass
+        try:
+            ok = self.button_box.button(QDialogButtonBox.StandardButton.Ok)
+            if ok:
+                ok.setVisible(False)
+            cancel = self.button_box.button(QDialogButtonBox.StandardButton.Cancel)
+            if cancel:
+                cancel.setVisible(False)
+        except Exception:
+            pass
+
+    def flush_and_close(self) -> None:
+        """Vacía cualquier cambio pendiente (autosave) y libera recursos.
+        Se invoca al cerrar el panel lateral o al cambiar de fila."""
+        try:
+            if getattr(self, "_dirty", False):
+                self._perform_save(close_after=False)
+        except Exception:
+            pass
+        # done() detiene el autosave y libera el edit-lock.
+        try:
+            self.done(QDialog.DialogCode.Accepted)
+        except Exception:
+            pass
+
     def _autosave_if_needed(self):
         """
         Autosave diferido. Solo guarda si:
@@ -1681,6 +1765,9 @@ class LicitationDetailsWindow(QDialog):
 
             save_return = self.db.save_licitacion(self.licitacion)
             self._ensure_licitacion_id_after_save(save_return)
+            # Si el guardado asignó un nuevo id (creación), blindarlo también
+            # frente a la sincronización en tiempo real durante esta sesión.
+            self._acquire_edit_lock()
             self._persistir_ganadores_por_lote()
 
             # Actualizar snapshot y estado

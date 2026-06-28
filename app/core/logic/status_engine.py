@@ -5,6 +5,11 @@ from typing import Iterable, Optional, Tuple
 
 from PyQt6.QtGui import QColor
 
+from app.core.logic.domain_service import (
+    evaluar_estado_finalizado,
+    evaluar_proximo_vencimiento,
+)
+
 
 @dataclass(frozen=True)
 class NextDeadline:
@@ -37,30 +42,8 @@ class DefaultStatusEngine(StatusEngine):
         return (s or "").strip().lower()
 
     def is_finalizada(self, lic) -> bool:
-        """
-        Finalizada si:
-        - adjudicada True, o
-        - estado/estatus contiene 'adjudicad', 'desierta', 'cancelada' o 'descalificad', o
-        - ganada True.
-        """
-        try:
-            if hasattr(lic, "is_finalizada") and callable(getattr(lic, "is_finalizada")):
-                return bool(lic.is_finalizada())
-        except Exception:
-            pass
-
-        est = self._norm(getattr(lic, "estatus", None) or getattr(lic, "estado", None))
-        adjudicada_flag = bool(getattr(lic, "adjudicada", False))
-        ganada_flag = getattr(lic, "ganada", None)
-
-        if adjudicada_flag:
-            return True
-        if any(k in est for k in ("adjudicad", "desierta", "cancelada", "descalificad")):
-            return True
-        if ganada_flag is True:
-            return True
-
-        return False
+        """Criterio único de finalización (servicio de dominio)."""
+        return evaluar_estado_finalizado(lic)
 
     def estatus_y_color(self, lic) -> Tuple[str, QColor]:
         """
@@ -102,24 +85,10 @@ class DefaultStatusEngine(StatusEngine):
         return est_raw or "En curso", self.C_EN_CURSO
 
     def next_deadline(self, lic) -> NextDeadline:
-        try:
-            if hasattr(lic, "get_next_deadline_info") and callable(getattr(lic, "get_next_deadline_info")):
-                info = lic.get_next_deadline_info()
-                return NextDeadline(
-                    label=str(info.get("label", "")),
-                    days=info.get("days", None),
-                    color=QColor(info.get("color", "#BDBDBD")),
-                    verbose=str(info.get("verbose", "")),
-                )
-        except Exception:
-            pass
-
-        dias = None
-        try:
-            if hasattr(lic, "get_dias_restantes") and callable(getattr(lic, "get_dias_restantes")):
-                dias = lic.get_dias_restantes()
-        except Exception:
-            dias = None
+        # Cálculo unificado del próximo hito en el servicio de dominio; aquí solo
+        # se mapea a la presentación Qt (etiqueta + color).
+        pv = evaluar_proximo_vencimiento(lic)
+        dias = pv.days_left
 
         if dias is None:
             return NextDeadline("Sin cronograma", None, QColor("#BDBDBD"), "Sin cronograma")

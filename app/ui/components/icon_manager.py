@@ -13,35 +13,87 @@ class IconManager:
     Gestor de iconos con soporte de temas.
     Renderiza iconos usando QPainter en lugar de QSvgRenderer.
     """
-    
+
+    # Paleta por defecto (Sober Light Emerald). Garantiza que los iconos se
+    # rendericen correctamente en modo claro AUNQUE aún no se haya invocado
+    # set_theme_colors(). Nunca debe quedar el blanco como color base.
+    _DEFAULT_THEME_COLORS: Dict[str, str] = {
+        "text": "#18181B",       # Texto principal (zinc oscuro)
+        "text_sec": "#71717A",   # Texto secundario/muted (color base de iconos)
+        "accent": "#059669",     # Verde esmeralda (iconos activos/seleccionados)
+        "border": "#E4E4E7",
+        "success": "#10B981",
+        "danger": "#DC2626",
+        "warning": "#D97706",
+        "info": "#2563EB",
+    }
+
+    # Alias que deben resolverse al color de acento (esmeralda).
+    _ACCENT_ALIASES = {"accent", "emerald", "esmeralda", "primary", "active"}
+    # Valores que significan "usar el color por defecto del sistema/tema".
+    _DEFAULT_ALIASES = {"", "default", "system", "muted", "secondary"}
+
     def __init__(self):
         self._cache: Dict[str, QIcon] = {}
-        self._current_theme_colors = {}
-    
+        # Sembrar con los defaults claros para no depender de set_theme_colors().
+        self._current_theme_colors: Dict[str, str] = dict(self._DEFAULT_THEME_COLORS)
+
     def set_theme_colors(self, colors: Dict[str, str]):
-        """Actualiza los colores del tema y limpia el caché."""
-        self._current_theme_colors = colors
+        """
+        Actualiza los colores del tema y limpia el caché de pixmaps para que
+        los iconos se regeneren con la nueva paleta. Se fusiona con los
+        defaults para que nunca falte una clave esencial (text_sec/accent).
+        """
+        merged = dict(self._DEFAULT_THEME_COLORS)
+        merged.update(colors or {})
+        self._current_theme_colors = merged
         self._cache.clear()
-        print(f"[DEBUG] IconManager: Colores de tema actualizados, caché limpiado")
-    
-    def get_icon(self, name: str, color: Optional[str] = None, size: int = 24) -> QIcon:
+        print("[DEBUG] IconManager: Colores de tema actualizados, caché limpiado")
+
+    def _muted(self) -> str:
+        """Color base de iconos: texto secundario/muted del tema."""
+        return self._current_theme_colors.get("text_sec") or "#71717A"
+
+    def _accent(self) -> str:
+        """Color de acento (esmeralda) para iconos activos/seleccionados."""
+        return self._current_theme_colors.get("accent") or "#059669"
+
+    def get_icon(
+        self,
+        name: str,
+        color: Optional[str] = None,
+        size: int = 24,
+        active: bool = False,
+    ) -> QIcon:
         """
         Obtiene un icono con el color especificado.
-        
+
         Args:
-            name: Nombre del icono
-            color: Color hexadecimal o nombre de color del tema
-            size: Tamaño del icono en píxeles
-        
+            name: Nombre del icono.
+            color: Color hexadecimal, nombre de color del tema (accent, success,
+                   info...) o None/"default" para usar el color muted del tema.
+            size: Tamaño del icono en píxeles.
+            active: Si es True (botón activo/elemento seleccionado), fuerza el
+                    color de acento esmeralda para mantener coherencia cromática.
+
         Returns:
-            QIcon generado
+            QIcon generado.
         """
         # Resolver color
-        if color is None:
-            color = self._current_theme_colors.get('text', '#ffffff')
-        elif color in self._current_theme_colors:
-            color = self._current_theme_colors[color]
-        
+        if active:
+            # Botones activos / seleccionados → esmeralda dinámico del tema.
+            color = self._accent()
+        else:
+            norm = color.strip().lower() if isinstance(color, str) else color
+            if color is None or norm in self._DEFAULT_ALIASES:
+                # Por defecto/vacío → texto secundario (muted), NUNCA blanco.
+                color = self._muted()
+            elif norm in self._ACCENT_ALIASES:
+                color = self._accent()
+            elif color in self._current_theme_colors:
+                color = self._current_theme_colors[color]
+            # En cualquier otro caso se asume que 'color' ya es un hex explícito.
+
         # Clave de caché
         cache_key = f"{name}_{color}_{size}"
         

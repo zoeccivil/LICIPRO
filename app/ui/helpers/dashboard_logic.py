@@ -1,17 +1,20 @@
+"""
+Helpers de presentación del dashboard.
+
+NOTA: las fórmulas de negocio (% docs, % diferencia, vencimientos y estado
+finalizado) viven ahora EXCLUSIVAMENTE en app/core/logic/domain_service.py.
+Las funciones de este módulo delegan en ese servicio para evitar lógica
+duplicada e inconsistente.
+"""
 from __future__ import annotations
 from dataclasses import dataclass
 from typing import Optional, Iterable, Tuple, List, Dict
 import datetime as _dt
 
 from app.core.models import Licitacion, Documento, Lote
-
-KNOWN_MILESTONES_ORDER = (
-    "presentacion_ofertas",
-    "apertura_ofertas",
-    "notificacion",
-    "adjudicacion",
-    "firma_contrato",
-)
+from app.core.logic import domain_service
+# Reexport de la jerarquía canónica de hitos (fuente única de verdad)
+from app.core.logic.domain_service import KNOWN_MILESTONES_ORDER
 
 @dataclass
 class DeadlineInfo:
@@ -37,59 +40,31 @@ def _today() -> _dt.date:
     return _dt.date.today()
 
 def is_finalizada(lic: Licitacion) -> bool:
-    # TODO: reemplazar por tu lógica exacta de finalización
-    estado = (lic.estado or "").strip().lower()
-    if getattr(lic, "adjudicada", False):
-        return True
-    return estado in {"adjudicada", "desierta", "cancelada", "fases cumplidas"}
+    """Delegado al servicio de dominio (criterio único de finalización)."""
+    return domain_service.evaluar_estado_finalizado(lic)
 
 def sum_montos_ofertados(lic: Licitacion) -> float:
     lotes: List[Lote] = list(getattr(lic, "lotes", []) or [])
     return float(sum((getattr(l, "monto_ofertado", 0.0) or 0.0) for l in lotes))
 
 def percent_docs(lic: Licitacion) -> float:
-    docs: List[Documento] = list(getattr(lic, "documentos_solicitados", []) or [])
-    if not docs:
-        return 0.0
-    # TODO: Ajustar según tu definición (presentado vs revisado vs obligatorio)
-    presentados = sum(1 for d in docs if getattr(d, "presentado", False))
-    return 100.0 * presentados / max(1, len(docs))
+    """Delegado al servicio de dominio (% de documentos completos)."""
+    return domain_service.calcular_porcentaje_documentos(lic)
 
 def percent_diff(lic: Licitacion) -> Optional[float]:
-    # TODO: Ajustar: ¿% diferencia = (oferta - base) / base? en el agregado de lotes
-    lotes: List[Lote] = list(getattr(lic, "lotes", []) or [])
-    base = float(sum((getattr(l, "monto_base", 0.0) or 0.0) for l in lotes))
-    oferta = float(sum((getattr(l, "monto_ofertado", 0.0) or 0.0) for l in lotes))
-    if base <= 0:
-        return None
-    return 100.0 * (oferta - base) / base
+    """Delegado al servicio de dominio. Devuelve None si no hay base de referencia.
+    Usa la base de licitación (no la personal) para mantener el comportamiento
+    histórico de esta vista."""
+    return domain_service.calcular_diferencia_financiera(
+        lic, usar_base_personal=False
+    ).diferencia_pct
 
 def next_deadline(lic: Licitacion) -> Optional[DeadlineInfo]:
-    cronograma: Dict[str, dict] = getattr(lic, "cronograma", {}) or {}
-    today = _today()
-    best: Optional[Tuple[str, _dt.date]] = None
-
-    for key in KNOWN_MILESTONES_ORDER:
-        node = cronograma.get(key) or {}
-        d = _parse_date(node.get("fecha") or node.get("date") or node.get("deadline"))
-        if not d:
-            continue
-        if d >= today and (best is None or d < best[1]):
-            best = (key, d)
-
-    if not best:
+    """Delegado al servicio de dominio. Mantiene el tipo DeadlineInfo de esta capa."""
+    pv = domain_service.evaluar_proximo_vencimiento(lic)
+    if pv.date is None:
         return None
-
-    key, date = best
-    days_left = (date - today).days
-    labels = {
-        "presentacion_ofertas": "Presentación de Ofertas",
-        "apertura_ofertas": "Apertura de Ofertas",
-        "notificacion": "Notificación",
-        "adjudicacion": "Adjudicación",
-        "firma_contrato": "Firma de Contrato",
-    }
-    return DeadlineInfo(key=key, label=labels.get(key, key), date=date, days_left=days_left)
+    return DeadlineInfo(key=pv.key or "", label=pv.label, date=pv.date, days_left=pv.days_left or 0)
 
 def restan_text(info: Optional[DeadlineInfo]) -> str:
     if not info:

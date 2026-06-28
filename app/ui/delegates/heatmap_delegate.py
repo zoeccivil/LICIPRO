@@ -6,18 +6,28 @@ from PyQt6.QtGui import QPainter, QColor, QPen
 from PyQt6.QtWidgets import QStyledItemDelegate, QStyleOptionViewItem
 from typing import Optional
 
+from app.ui.theme.emerald_light import TOKENS
+
+# Opacidad máxima del tinte sobre fondo claro. Se mantiene baja para que el
+# texto oscuro (#18181B) conserve un contraste 100% legible/accesible.
+_MAX_TINT_OPACITY = 0.30
+
 
 class HeatmapDelegate(QStyledItemDelegate):
     """
-    Delegate que colorea el fondo según el valor (verde positivo, rojo negativo).
+    Delegate que colorea el fondo según el valor sobre el tema CLARO:
+    - Positivo: tinte verde esmeralda.
+    - Negativo: tinte rojo sutil.
+    - Neutro: gris claro.
+    El texto siempre se dibuja en TEXT_PRIMARY (#18181B) para máxima legibilidad.
     """
-    
+
     def __init__(self, parent=None):
         super().__init__(parent)
-        self._positive_color = QColor("#00C853")  # Verde
-        self._negative_color = QColor("#D50000")  # Rojo
-        self._neutral_color = QColor("#3E3E42")   # Gris
-        self._text_color = QColor("#FFFFFF")      # Blanco
+        self._positive_color = QColor(TOKENS["PRIMARY_ACCENT"])  # Verde esmeralda #059669
+        self._negative_color = QColor(TOKENS["ERROR_TEXT"])      # Rojo sutil #DC2626
+        self._neutral_color = QColor(TOKENS["SURFACE_HOVER"])    # Gris claro #F4F4F5
+        self._text_color = QColor(TOKENS["TEXT_PRIMARY"])        # Zinc oscuro #18181B
     
     def paint(self, painter: QPainter, option: QStyleOptionViewItem, index):
         """
@@ -38,25 +48,26 @@ class HeatmapDelegate(QStyledItemDelegate):
         except:
             percentage = 0.0
         
-        # Elegir color según valor
+        # Elegir color según valor (copia para no mutar el color base cacheado)
         if percentage > 0:
-            bg_color = self._positive_color
+            bg_color = QColor(self._positive_color)
         elif percentage < 0:
-            bg_color = self._negative_color
+            bg_color = QColor(self._negative_color)
         else:
-            bg_color = self._neutral_color
-        
+            bg_color = QColor(self._neutral_color)
+
         # Área de la celda
         rect = option.rect
-        
+
         # Dibujar fondo con transparencia
         painter.save()
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        
-        # Ajustar opacidad según magnitud
-        opacity = min(abs(percentage) / 100.0, 0.7)
+
+        # Ajustar opacidad según magnitud, con tope bajo (_MAX_TINT_OPACITY)
+        # para que el tinte sea suave sobre blanco y el texto oscuro quede legible.
+        opacity = min(abs(percentage) / 100.0, 1.0) * _MAX_TINT_OPACITY
         bg_color.setAlphaF(opacity)
-        
+
         painter.fillRect(rect, bg_color)
         
         # Dibujar texto

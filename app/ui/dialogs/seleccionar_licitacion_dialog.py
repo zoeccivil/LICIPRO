@@ -15,6 +15,7 @@ from PyQt6.QtGui import QColor
 
 from app.core.db_adapter import DatabaseAdapter
 from app.ui.utils.icon_utils import search_icon
+from app.ui.theme.emerald_light import TOKENS
 
 
 class SeleccionarLicitacionDialog(QDialog):
@@ -42,13 +43,14 @@ class SeleccionarLicitacionDialog(QDialog):
         
         # Título
         title = QLabel("Seleccione una licitación para generar el reporte:")
-        title.setStyleSheet("""
-            QLabel {
+        title.setStyleSheet(f"""
+            QLabel {{
                 font-size: 14pt;
                 font-weight: bold;
-                color: #7C4DFF;
+                color: {TOKENS['TEXT_PRIMARY']};
                 margin-bottom: 10px;
-            }
+                background: transparent;
+            }}
         """)
         layout.addWidget(title)
         
@@ -62,18 +64,18 @@ class SeleccionarLicitacionDialog(QDialog):
         
         self.search_box = QLineEdit()
         self.search_box.setPlaceholderText("Buscar por código, nombre, institución o estado...")
-        self.search_box.setStyleSheet("""
-            QLineEdit {
+        self.search_box.setStyleSheet(f"""
+            QLineEdit {{
                 padding: 8px;
                 font-size: 10pt;
-                border: 2px solid #3E3E42;
+                border: 1px solid {TOKENS['BORDER']};
                 border-radius: 6px;
-                background-color: #2D2D30;
-                color: #E6E9EF;
-            }
-            QLineEdit:focus {
-                border-color: #7C4DFF;
-            }
+                background-color: {TOKENS['SURFACE']};
+                color: {TOKENS['TEXT_PRIMARY']};
+            }}
+            QLineEdit:focus {{
+                border-color: {TOKENS['PRIMARY_ACCENT']};
+            }}
         """)
         self.search_box.textChanged.connect(self._filter_table)
         search_layout.addWidget(self.search_box, 1)
@@ -82,7 +84,7 @@ class SeleccionarLicitacionDialog(QDialog):
         
         # Contador
         self.lbl_contador = QLabel("Cargando...")
-        self.lbl_contador.setStyleSheet("font-size: 9pt; color: #B9C0CC;")
+        self.lbl_contador.setStyleSheet(f"font-size: 9pt; color: {TOKENS['TEXT_MUTED']}; background: transparent;")
         layout.addWidget(self.lbl_contador)
         
         # Tabla
@@ -103,24 +105,24 @@ class SeleccionarLicitacionDialog(QDialog):
         header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
         
         # Estilos
-        self.table.setStyleSheet("""
-            QTableWidget {
-                gridline-color: #3E3E42;
-                background-color: #252526;
-                alternate-background-color: #2D2D30;
-                selection-background-color: #7C4DFF;
-                selection-color: white;
-                border: 1px solid #3E3E42;
+        self.table.setStyleSheet(f"""
+            QTableWidget {{
+                gridline-color: {TOKENS['BORDER']};
+                background-color: {TOKENS['SURFACE']};
+                alternate-background-color: {TOKENS['SURFACE_ALT']};
+                selection-background-color: {TOKENS['SELECTION_BG']};
+                selection-color: {TOKENS['TEXT_PRIMARY']};
+                border: 1px solid {TOKENS['BORDER']};
                 border-radius: 6px;
-            }
-            QHeaderView::section {
-                background-color: #2D2D30;
-                color: #E6E9EF;
+            }}
+            QHeaderView::section {{
+                background-color: {TOKENS['SURFACE_ALT']};
+                color: {TOKENS['TEXT_MUTED']};
                 padding: 8px;
                 border: none;
-                border-bottom: 2px solid #7C4DFF;
+                border-bottom: 2px solid {TOKENS['PRIMARY_ACCENT']};
                 font-weight: bold;
-            }
+            }}
         """)
         
         layout.addWidget(self.table, 1)
@@ -131,43 +133,44 @@ class SeleccionarLicitacionDialog(QDialog):
         btn_layout.addStretch()
         
         btn_cancel = QPushButton("Cancelar")
-        btn_cancel.setStyleSheet("""
-            QPushButton {
-                background-color: #3E3E42;
-                color: white;
-                border: none;
+        btn_cancel.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {TOKENS['SURFACE']};
+                color: {TOKENS['TEXT_PRIMARY']};
+                border: 1px solid {TOKENS['BORDER']};
                 border-radius: 6px;
                 padding: 10px 20px;
                 font-size: 10pt;
                 font-weight: bold;
                 min-width: 100px;
-            }
-            QPushButton:hover {
-                background-color: #4E4E52;
-            }
+            }}
+            QPushButton:hover {{
+                border-color: {TOKENS['PRIMARY_ACCENT']};
+                background-color: {TOKENS['SURFACE_HOVER']};
+            }}
         """)
         btn_cancel.clicked.connect(self.reject)
         btn_layout.addWidget(btn_cancel)
         
         btn_select = QPushButton("Seleccionar")
         btn_select.setDefault(True)
-        btn_select.setStyleSheet("""
-            QPushButton {
-                background-color: #7C4DFF;
-                color: white;
+        btn_select.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {TOKENS['PRIMARY_ACCENT']};
+                color: #FFFFFF;
                 border: none;
                 border-radius: 6px;
                 padding: 10px 20px;
                 font-size: 10pt;
                 font-weight: bold;
                 min-width: 100px;
-            }
-            QPushButton:hover {
-                background-color: #6C3FEF;
-            }
-            QPushButton:pressed {
-                background-color: #5C2FDF;
-            }
+            }}
+            QPushButton:hover {{
+                background-color: {TOKENS['PRIMARY_HOVER']};
+            }}
+            QPushButton:pressed {{
+                background-color: {TOKENS['PRIMARY_PRESSED']};
+            }}
         """)
         btn_select.clicked.connect(self.accept)
         btn_layout.addWidget(btn_select)

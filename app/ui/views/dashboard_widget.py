@@ -152,22 +152,23 @@ class DashboardWidget(QWidget):
     # ----------------- Tema / Colores -----------------
     def _resolve_theme_colors(self):
         """
-        Aplica paleta Titanium Construct en modo OSCURO para consistencia
-        con el resto de la aplicación moderna.
+        Aplica la paleta Sober Light Emerald (modo claro) desde los Design Tokens
+        para consistencia con el resto de la aplicación moderna.
         """
-        # ✅ Colores adaptados al tema oscuro moderno
-        self.COLOR_BACKGROUND = "#1E1E1E"       # Fondo general oscuro
-        self.COLOR_TEXT_PRIMARY = "#E6E9EF"     # Texto claro principal
-        self.COLOR_TEXT_SECONDARY = "#B9C0CC"   # Texto claro secundario
+        from app.ui.theme.emerald_light import TOKENS
 
-        self.COLOR_PARTICIPACIONES = "#7C4DFF"  # Morado accent (igual que app moderna)
-        self.COLOR_GANADAS = "#00C853"          # Verde éxito
-        self.COLOR_PERDIDAS = "#FF5252"         # Rojo error
-        self.COLOR_EN_PROCESO = "#FFA726"       # Ámbar/naranja
+        self.COLOR_BACKGROUND = TOKENS["BACKGROUND"]      # #F9F9FB
+        self.COLOR_TEXT_PRIMARY = TOKENS["TEXT_PRIMARY"]  # #18181B
+        self.COLOR_TEXT_SECONDARY = TOKENS["TEXT_MUTED"]  # #71717A
 
-        self.COLOR_BORDER = "#3E3E42"           # Bordes sutiles
-        self.COLOR_ALT = "#2D2D30"              # Fondos alternos
-        self.COLOR_BASE = "#252526"             # Fondo de cards/tablas
+        self.COLOR_PARTICIPACIONES = TOKENS["PRIMARY_ACCENT"]  # Esmeralda #059669
+        self.COLOR_GANADAS = TOKENS["SUCCESS_TEXT"]            # Verde éxito
+        self.COLOR_PERDIDAS = TOKENS["ERROR_TEXT"]             # Rojo error
+        self.COLOR_EN_PROCESO = TOKENS["WARNING_TEXT"]         # Ámbar/naranja
+
+        self.COLOR_BORDER = TOKENS["BORDER"]   # #E4E4E7 bordes sutiles
+        self.COLOR_ALT = TOKENS["SURFACE_ALT"] # #FAFAFA fondos alternos
+        self.COLOR_BASE = TOKENS["SURFACE"]    # #FFFFFF fondo de cards/tablas
 
         # ✅ QSS actualizado para modo oscuro
         self._BOX_QSS = (

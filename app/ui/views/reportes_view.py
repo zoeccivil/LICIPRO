@@ -16,6 +16,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtGui import QColor, QPalette, QGuiApplication
 
 from app.core.db_adapter import DatabaseAdapter
+from app.ui.theme.emerald_light import TOKENS
 
 # ✅ CORRECCIÓN: Importar reportes existentes con manejo de errores mejorado
 DIALOGO_REPORTES_AVAILABLE = False
@@ -67,14 +68,14 @@ class ReportCard(QFrame):
         
         self.setStyleSheet(f"""
             QFrame {{
-                background-color: #2D2D30;
-                border: 2px solid #3E3E42;
+                background-color: {TOKENS['SURFACE']};
+                border: 1px solid {TOKENS['BORDER']};
                 border-radius: 12px;
                 padding: 20px;
             }}
             QFrame:hover {{
                 border-color: {color};
-                background-color: #37373D;
+                background-color: {TOKENS['SURFACE_HOVER']};
             }}
         """)
         
@@ -111,11 +112,12 @@ class ReportCard(QFrame):
         
         # Descripción
         desc_label = QLabel(description)
-        desc_label.setStyleSheet("""
-            QLabel {
+        desc_label.setStyleSheet(f"""
+            QLabel {{
                 font-size: 9pt;
-                color: #B9C0CC;
-            }
+                color: {TOKENS['TEXT_MUTED']};
+                background: transparent;
+            }}
         """)
         desc_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         desc_label.setWordWrap(True)
@@ -184,30 +186,18 @@ class ReportesView(QWidget):
         self._setup_ui()
     
     def _resolve_theme_colors(self):
-        """Obtiene colores del tema activo."""
-        app = QGuiApplication.instance()
-        pal: QPalette = app.palette() if app else QPalette()
-        
-        def get_color(role: QPalette.ColorRole, fallback: str) -> str:
-            try:
-                color = pal.color(role)
-                if color.isValid():
-                    return color.name()
-            except Exception:
-                pass
-            return fallback
-        
+        """Paleta derivada de los Design Tokens del tema claro (Sober Light Emerald)."""
         self.colors = {
-            "accent": get_color(QPalette.ColorRole.Highlight, "#7C4DFF"),
-            "text": get_color(QPalette.ColorRole.Text, "#E6E9EF"),
-            "text_sec": get_color(QPalette.ColorRole.PlaceholderText, "#B9C0CC"),
-            "window": get_color(QPalette.ColorRole.Window, "#1E1E1E"),
-            "base": get_color(QPalette.ColorRole.Base, "#252526"),
-            "border": get_color(QPalette.ColorRole.Mid, "#3A4152"),
-            "success": "#00C853",
-            "danger": "#FF5252",
-            "warning": "#FFA726",
-            "info": "#448AFF",
+            "accent": TOKENS["PRIMARY_ACCENT"],   # #059669
+            "text": TOKENS["TEXT_PRIMARY"],       # #18181B
+            "text_sec": TOKENS["TEXT_MUTED"],     # #71717A
+            "window": TOKENS["BACKGROUND"],       # #F9F9FB
+            "base": TOKENS["SURFACE"],            # #FFFFFF
+            "border": TOKENS["BORDER"],           # #E4E4E7
+            "success": TOKENS["SUCCESS_TEXT"],
+            "danger": TOKENS["ERROR_TEXT"],
+            "warning": TOKENS["WARNING_TEXT"],
+            "info": TOKENS["INFO_TEXT"],
         }
     
     def _setup_ui(self):
@@ -232,12 +222,13 @@ class ReportesView(QWidget):
             QLabel {{
                 font-size: 28pt;
                 font-weight: bold;
-                color: {self.colors['accent']};
+                color: {self.colors['text']};
                 padding: 10px 0;
+                background: transparent;
             }}
         """)
         content_layout.addWidget(title)
-        
+
         # Subtítulo
         subtitle = QLabel("Genera reportes detallados y analiza KPIs de tus licitaciones")
         subtitle.setStyleSheet(f"""
@@ -245,6 +236,7 @@ class ReportesView(QWidget):
                 font-size: 12pt;
                 color: {self.colors['text_sec']};
                 margin-bottom: 10px;
+                background: transparent;
             }}
         """)
         content_layout.addWidget(subtitle)
@@ -614,7 +606,7 @@ class ReportesView(QWidget):
                     'CustomTitle',
                     parent=styles['Heading1'],
                     fontSize=24,
-                    textColor=colors.HexColor('#7C4DFF'),
+                    textColor=colors.HexColor('#059669'),
                     spaceAfter=30,
                     alignment=1
                 )
@@ -639,7 +631,7 @@ class ReportesView(QWidget):
                 
                 table_montos = Table(data_montos, colWidths=[3*inch, 2*inch])
                 table_montos.setStyle(TableStyle([
-                    ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#7C4DFF')),
+                    ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#059669')),
                     ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
                     ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
                     ('ALIGN', (1, 1), (1, -1), 'RIGHT'),
@@ -810,7 +802,7 @@ class ReportesView(QWidget):
             ws.append(headers)
             
             # Estilo de encabezados
-            header_fill = PatternFill(start_color="7C4DFF", end_color="7C4DFF", fill_type="solid")
+            header_fill = PatternFill(start_color="059669", end_color="059669", fill_type="solid")
             header_font = Font(bold=True, color="FFFFFF")
             
             for col in range(1, len(headers) + 1):

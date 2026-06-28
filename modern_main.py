@@ -17,7 +17,7 @@ from PyQt6.QtCore import Qt
 PROJECT_ROOT = Path(__file__).parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from app.ui.theme.titanium_construct_v2 import apply_titanium_construct_v2
+from app.ui.theme.emerald_light import apply_emerald_light_with_icons, TOKENS
 from app.ui.windows.modern_main_window import ModernMainWindow
 from app.ui.dialogs.firebase_config_dialog import show_firebase_config_dialog
 from app.core import lic_config
@@ -86,9 +86,9 @@ def _initialize_firebase() -> Optional[object]:
         
         # Asegurarnos de que exista una QApplication
         app = QApplication.instance()
-        if app is None: 
+        if app is None:
             app = QApplication(sys.argv)
-            apply_titanium_construct_v2(app)
+            apply_emerald_light_with_icons(app)
 
         parent = QWidget()
         parent.hide()
@@ -256,21 +256,27 @@ def show_splash_screen(app):
         from PyQt6.QtGui import QPixmap, QPainter, QColor, QFont, QLinearGradient
         from PyQt6.QtCore import Qt, QRect
         
-        # Crear pixmap con degradado
+        # Crear pixmap con fondo claro (modo Sober Light Emerald)
+        bg_color = QColor(TOKENS["BACKGROUND"])       # #F9F9FB
+        surface_color = QColor(TOKENS["SURFACE"])     # #FFFFFF
+        text_primary = QColor(TOKENS["TEXT_PRIMARY"]) # #18181B
+        text_muted = QColor(TOKENS["TEXT_MUTED"])     # #71717A
+        accent = QColor(TOKENS["PRIMARY_ACCENT"])     # #059669
+
         pixmap = QPixmap(600, 400)
-        pixmap.fill(QColor("#1E1E1E"))
-        
+        pixmap.fill(bg_color)
+
         painter = QPainter(pixmap)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        
-        # Degradado de fondo
+
+        # Degradado de fondo limpio (#F9F9FB → #FFFFFF)
         gradient = QLinearGradient(0, 0, 600, 400)
-        gradient.setColorAt(0, QColor("#1E1E1E"))
-        gradient.setColorAt(1, QColor("#2D2D30"))
+        gradient.setColorAt(0, bg_color)
+        gradient.setColorAt(1, surface_color)
         painter.fillRect(pixmap.rect(), gradient)
-        
+
         # Título
-        painter.setPen(QColor("#7C4DFF"))
+        painter.setPen(text_primary)
         font = QFont("Segoe UI", 32, QFont.Weight.Bold)
         painter.setFont(font)
         painter.drawText(
@@ -278,9 +284,9 @@ def show_splash_screen(app):
             Qt.AlignmentFlag.AlignCenter,
             "GESTOR DE\nLICITACIONES"
         )
-        
+
         # Subtítulo
-        painter.setPen(QColor("#B0B0B0"))
+        painter.setPen(text_muted)
         font.setPointSize(12)
         font.setBold(False)
         painter.setFont(font)
@@ -289,9 +295,9 @@ def show_splash_screen(app):
             Qt.AlignmentFlag.AlignCenter,
             "Modern UI Edition v4.0"
         )
-        
-        # Mensaje de carga
-        painter.setPen(QColor("#7C4DFF"))
+
+        # Mensaje de carga (acento esmeralda)
+        painter.setPen(accent)
         font.setPointSize(10)
         painter.setFont(font)
         painter.drawText(
@@ -299,9 +305,9 @@ def show_splash_screen(app):
             Qt.AlignmentFlag.AlignCenter,
             "Inicializando..."
         )
-        
+
         # Versión en esquina
-        painter.setPen(QColor("#6B7280"))
+        painter.setPen(text_muted)
         font.setPointSize(9)
         painter.setFont(font)
         painter.drawText(
@@ -336,10 +342,10 @@ def main():
     app.setOrganizationName("Zoeccivil")
     app.setOrganizationDomain("zoeccivil.com")
     
-    # Aplicar tema moderno
+    # Aplicar tema moderno (Sober Light Emerald — modo claro por defecto)
     try:
-        apply_titanium_construct_v2(app)
-        print("[INFO] ✓ Tema Titanium Construct v2 aplicado")
+        apply_emerald_light_with_icons(app)
+        print("[INFO] ✓ Tema Sober Light Emerald aplicado")
     except Exception as e:
         print(f"[WARNING] No se pudo aplicar tema: {e}")
     

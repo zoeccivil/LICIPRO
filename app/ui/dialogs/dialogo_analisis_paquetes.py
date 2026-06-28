@@ -16,9 +16,6 @@ from PyQt6.QtGui import QColor, QBrush, QFont
 from app.core.models import Licitacion
 from app.core.reporting.report_generator import ReportGenerator, OPENPYXL_AVAILABLE, REPORTLAB_AVAILABLE
 
-if TYPE_CHECKING:
-    from app.ui.windows.main_window import MainWindow
-
 # Locale
 try:
     locale.setlocale(locale.LC_ALL, '')

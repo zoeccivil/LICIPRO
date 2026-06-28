@@ -17,6 +17,7 @@ from PyQt6.QtGui import QFont
 
 from app.core.db_adapter import DatabaseAdapter
 from app.core.logic.status_engine import StatusEngine, DefaultStatusEngine
+from app.ui.theme.emerald_light import TOKENS
 from app.ui.models.licitaciones_table_model import LicitacionesTableModel
 from app.ui.models.status_proxy_model import StatusFilterProxyModel
 from app.ui.delegates.row_color_delegate import RowColorDelegate
@@ -88,45 +89,30 @@ class LicitacionesListView(QWidget):
         
         # ✅ IMPORTANTE: Restaurar DESPUÉS de setup
         self._restore_column_widths()
-        
-        self.btn_nueva.clicked.connect(self._on_nueva_licitacion)
-        self.btn_editar.clicked.connect(self._on_editar_licitacion)
+
+        # NOTA: los botones "Nueva"/"Editar" los conecta la ventana principal
+        # (ModernMainWindow) para abrir el Side Sheet. No se conectan aquí para
+        # evitar abrir además una ventana flotante duplicada.
 
     def _resolve_theme_colors(self):
         """
         Obtiene colores dinámicos del tema de la aplicación.
         Crea el diccionario self.colors usado por los widgets.
         """
-        from PyQt6.QtGui import QGuiApplication, QPalette
-        
-        app = QGuiApplication.instance()
-        pal: QPalette = app.palette() if app else QPalette()
-        
-        def get_color(role: QPalette.ColorRole, fallback: str) -> str:
-            try:
-                color = pal.color(role)
-                if color.isValid():
-                    return color.name()
-            except Exception:
-                pass
-            return fallback
-        
-        # ✅ Diccionario de colores del tema Titanium Construct v2
+        # Paleta derivada de los Design Tokens del tema claro (Sober Light Emerald)
         self.colors = {
-            "accent": get_color(QPalette.ColorRole.Highlight, "#7C4DFF"),
-            "text": get_color(QPalette.ColorRole.Text, "#E6E9EF"),
-            "text_sec": get_color(QPalette.ColorRole.PlaceholderText, "#B9C0CC"),
-            "window": get_color(QPalette.ColorRole.Window, "#1E1E1E"),
-            "base": "#2D2D30",
-            "alt": get_color(QPalette.ColorRole.AlternateBase, "#2D2D30"),
-            "border": "#5E5E62",
-            "success": "#00C853",
-            "danger": "#FF5252",
-            "warning": "#FFA726",
-            "info": "#448AFF",
+            "accent": TOKENS["PRIMARY_ACCENT"],   # #059669
+            "text": TOKENS["TEXT_PRIMARY"],       # #18181B
+            "text_sec": TOKENS["TEXT_MUTED"],     # #71717A
+            "window": TOKENS["BACKGROUND"],       # #F9F9FB
+            "base": TOKENS["SURFACE"],            # #FFFFFF
+            "alt": TOKENS["SURFACE_ALT"],         # #FAFAFA
+            "border": TOKENS["BORDER"],           # #E4E4E7
+            "success": TOKENS["SUCCESS_TEXT"],
+            "danger": TOKENS["ERROR_TEXT"],
+            "warning": TOKENS["WARNING_TEXT"],
+            "info": TOKENS["INFO_TEXT"],
         }
-        
-        print(f"[DEBUG] ✓ Colores del tema cargados: {len(self.colors)} colores")
 
 
     def _setup_ui(self) -> None:
@@ -143,33 +129,9 @@ class LicitacionesListView(QWidget):
         filters_panel = self._create_filters_panel()
         main_layout.addWidget(filters_panel)
         
-        # Tabs
+        # Tabs (heredan el estilo claro global del tema)
         self.tabs = QTabWidget()
-        self.tabs.setStyleSheet("""
-            QTabWidget::pane {
-                border: 1px solid #3E3E42;
-                background-color: #2D2D30;
-                border-radius: 0 12px 12px 12px;
-                top: -1px;
-            }
-            QTabBar::tab {
-                background-color: transparent;
-                color: #B0B0B0;
-                padding: 10px 20px;
-                border-top-left-radius: 8px;
-                border-top-right-radius: 8px;
-                margin-right: 5px;
-                font-weight: 600;
-                font-size: 13px;
-            }
-            QTabBar::tab:selected {
-                background-color: #2D2D30;
-                color: #FFFFFF;
-                border: 1px solid #3E3E42;
-                border-bottom: none;
-            }
-        """)
-        
+
         self.table_activas = self._create_table_view()
         self.table_finalizadas = self._create_table_view()
         
@@ -187,61 +149,51 @@ class LicitacionesListView(QWidget):
         toolbar = QHBoxLayout()
         toolbar.setSpacing(10)
         
-        self.btn_nueva = QPushButton("Nueva Licitación")
-        self.btn_nueva.setIcon(add_icon())
-        self.btn_nueva.setStyleSheet("""
-            QPushButton {
-                background-color: #7C4DFF;
+        c = self.colors
+        # Botón primario (esmeralda)
+        primary_qss = f"""
+            QPushButton {{
+                background-color: {c['accent']};
                 color: #FFFFFF;
                 border: none;
                 border-radius: 6px;
                 padding: 10px 20px;
                 font-weight: 600;
-            }
-            QPushButton:hover {
-                background-color: #651FFF;
-            }
-        """)
+            }}
+            QPushButton:hover {{
+                background-color: {TOKENS['PRIMARY_HOVER']};
+            }}
+        """
+        # Botón secundario (contorno claro, resalta esmeralda al hover)
+        secondary_qss = f"""
+            QPushButton {{
+                background-color: {c['base']};
+                border: 1px solid {c['border']};
+                color: {c['text']};
+                border-radius: 6px;
+                padding: 10px 20px;
+                font-weight: 600;
+            }}
+            QPushButton:hover {{
+                border-color: {c['accent']};
+                background-color: {TOKENS['SURFACE_HOVER']};
+            }}
+        """
+
+        self.btn_nueva = QPushButton("Nueva Licitación")
+        self.btn_nueva.setIcon(add_icon())
+        self.btn_nueva.setStyleSheet(primary_qss)
         self.btn_nueva.setFixedHeight(40)
-        
+
         self.btn_editar = QPushButton("Editar Seleccionada")
         self.btn_editar.setIcon(edit_icon())
-        self.btn_editar.setStyleSheet("""
-            QPushButton {
-                background-color: transparent;
-                border: 1px solid #3E3E42;
-                color: #FFFFFF;
-                border-radius: 6px;
-                padding: 10px 20px;
-                font-weight: 600;
-            }
-            QPushButton:hover {
-                border-color: #B0B0B0;
-                background-color: #3E3E42;
-            }
-        """)
+        self.btn_editar.setStyleSheet(secondary_qss)
         self.btn_editar.setFixedHeight(40)
-        
-        # ✅ NUEVO: Botón de refresh
+
+        # Botón de refresh (secundario)
         self.btn_refresh = QPushButton("Actualizar Datos")
         self.btn_refresh.setIcon(refresh_icon())
-        self.btn_refresh.setStyleSheet("""
-            QPushButton {
-                background-color: transparent;
-                border: 1px solid #3E3E42;
-                color: #FFFFFF;
-                border-radius: 6px;
-                padding: 10px 20px;
-                font-weight: 600;
-            }
-            QPushButton:hover {
-                border-color: #7C4DFF;
-                background-color: #3E3E42;
-            }
-            QPushButton:pressed {
-                background-color: #7C4DFF;
-            }
-        """)
+        self.btn_refresh.setStyleSheet(secondary_qss)
         self.btn_refresh.setFixedHeight(40)
         self.btn_refresh.setToolTip("Recargar datos desde Firestore (ignora caché local)")
         
@@ -256,13 +208,13 @@ class LicitacionesListView(QWidget):
         """Crea el panel de filtros CON BADGE de vencimiento."""
         panel = QFrame()
         panel.setObjectName("FiltersPanel")
-        panel.setStyleSheet("""
-            #FiltersPanel {
-                background-color: #2D2D30;
-                border: 1px solid #3E3E42;
+        panel.setStyleSheet(f"""
+            #FiltersPanel {{
+                background-color: {self.colors['base']};
+                border: 1px solid {self.colors['border']};
                 border-radius: 12px;
                 padding: 20px;
-            }
+            }}
         """)
         
         main_layout = QVBoxLayout(panel)
@@ -275,45 +227,46 @@ class LicitacionesListView(QWidget):
         
         # Buscar Proceso
         label_buscar = QLabel("Buscar Proceso")
-        label_buscar.setStyleSheet("font-size: 12px; color: #B0B0B0;")
+        label_buscar.setStyleSheet(f"font-size: 12px; color: {self.colors['text_sec']};")
         self.search_edit = QLineEdit()
         self.search_edit.setPlaceholderText("Ej: DGAP-CCC...")
         self.search_edit.setFixedHeight(35)
         
         # Contiene Lote
         label_lote = QLabel("Contiene Lote")
-        label_lote.setStyleSheet("font-size: 12px; color: #B0B0B0;")
+        label_lote.setStyleSheet(f"font-size: 12px; color: {self.colors['text_sec']};")
         self.lote_edit = QLineEdit()
         self.lote_edit.setPlaceholderText("Descripción...")
         self.lote_edit.setFixedHeight(35)
         
         # Estado
         label_estado = QLabel("Estado")
-        label_estado.setStyleSheet("font-size: 12px; color: #B0B0B0;")
+        label_estado.setStyleSheet(f"font-size: 12px; color: {self.colors['text_sec']};")
         self.estado_combo = QComboBox()
         self.estado_combo.addItem("Todos")
         self.estado_combo.setFixedHeight(35)
         
         # Empresa
         label_empresa = QLabel("Empresa")
-        label_empresa.setStyleSheet("font-size: 12px; color: #B0B0B0;")
+        label_empresa.setStyleSheet(f"font-size: 12px; color: {self.colors['text_sec']};")
         self.empresa_combo = QComboBox()
         self.empresa_combo.addItem("Todas")
         self.empresa_combo.setFixedHeight(35)
         
         # Botón Limpiar
         self.btn_limpiar = QPushButton("Limpiar")
-        self.btn_limpiar.setStyleSheet("""
-            QPushButton {
-                background-color: transparent;
-                border: 1px solid #3E3E42;
-                color: #FFFFFF;
+        self.btn_limpiar.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {self.colors['base']};
+                border: 1px solid {self.colors['border']};
+                color: {self.colors['text']};
                 border-radius: 6px;
                 padding: 8px 16px;
-            }
-            QPushButton:hover {
-                border-color: #B0B0B0;
-            }
+            }}
+            QPushButton:hover {{
+                border-color: {self.colors['accent']};
+                background-color: {TOKENS['SURFACE_HOVER']};
+            }}
         """)
         self.btn_limpiar.setFixedHeight(35)
         
@@ -341,12 +294,13 @@ class LicitacionesListView(QWidget):
         badge_layout.setSpacing(10)
         
         badge_title = QLabel("Próximo Vencimiento:")
-        badge_title.setStyleSheet("""
-            QLabel {
-                color: #B0B0B0;
+        badge_title.setStyleSheet(f"""
+            QLabel {{
+                color: {self.colors['text_sec']};
                 font-size: 11pt;
                 font-weight: 600;
-            }
+                background: transparent;
+            }}
         """)
         badge_layout.addWidget(badge_title)
         
@@ -356,16 +310,16 @@ class LicitacionesListView(QWidget):
         self.nextDueArea.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         self.nextDueArea.setTextFormat(Qt.TextFormat.RichText)
         self.nextDueArea.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        self.nextDueArea.setStyleSheet("""
-            QLabel {
-                background-color: #1E1E1E;
-                color: #E6E9EF;
+        self.nextDueArea.setStyleSheet(f"""
+            QLabel {{
+                background-color: {self.colors['base']};
+                color: {self.colors['text']};
                 padding: 10px 15px;
                 border-radius: 8px;
                 font-size: 11pt;
-                border: 1px solid #3E3E42;
+                border: 1px solid {self.colors['border']};
                 min-height: 45px;
-            }
+            }}
         """)
         badge_layout.addWidget(self.nextDueArea, 1)
         
@@ -404,10 +358,10 @@ class LicitacionesListView(QWidget):
             font.setBold(True)
             lbl.setFont(font)
         
-        self.lbl_activas.setStyleSheet("color: #FFFFFF;")
-        self.lbl_ganadas.setStyleSheet("color: #00C853;")
-        self.lbl_lotes.setStyleSheet("color: #448AFF;")
-        self.lbl_perdidas.setStyleSheet("color: #FF5252;")
+        self.lbl_activas.setStyleSheet(f"color: {self.colors['text']}; background: transparent;")
+        self.lbl_ganadas.setStyleSheet(f"color: {self.colors['success']}; background: transparent;")
+        self.lbl_lotes.setStyleSheet(f"color: {self.colors['info']}; background: transparent;")
+        self.lbl_perdidas.setStyleSheet(f"color: {self.colors['danger']}; background: transparent;")
         
         footer.addWidget(self.lbl_activas)
         footer.addWidget(self.lbl_ganadas)
@@ -1185,61 +1139,35 @@ class LicitacionesListView(QWidget):
     
     def _on_double_click(self, index) -> None:
         """
-        Maneja el doble clic en una fila de la tabla.
-        Abre la ventana de detalles de la licitación.
-        
-        Args:
-            index: Índice de la celda clickeada
+        Doble clic en una fila: emite detail_requested con la licitación.
+        El workspace (ModernMainWindow) la muestra en el Side Sheet lateral en
+        lugar de abrir una ventana flotante.
         """
-        from app.ui.windows.licitation_details_window import LicitationDetailsWindow
-        
         if not index.isValid():
             return
-        
-        # ✅ CORRECCIÓN: Mapear correctamente a través de múltiples proxies
-        # Obtener el modelo proxy actual (puede ser MultiFilterProxyModel o StatusFilterProxyModel)
-        proxy_model = index.model()
-        
+
         # Mapear al modelo fuente (puede haber múltiples niveles de proxy)
         source_index = index
-        current_model = proxy_model
-        
-        # Iterar hasta llegar al modelo fuente real
+        current_model = index.model()
         while hasattr(current_model, 'mapToSource'):
             source_index = current_model.mapToSource(source_index)
             current_model = current_model.sourceModel()
             if current_model is None:
                 break
-        
-        # Verificar que llegamos al modelo base
+
         if current_model is None or source_index is None or not source_index.isValid():
             print("[ERROR] No se pudo mapear al modelo fuente")
             return
-        
-        # Obtener licitación del modelo base
+
         licitacion = current_model.data(
-            source_index, 
+            source_index,
             Qt.ItemDataRole.UserRole + 1002  # ROLE_RECORD_ROLE
         )
-        
         if not licitacion:
-            print(f"[ERROR] No se pudo obtener licitación desde índice (row={source_index.row()})")
             return
-        
-        print(f"[DEBUG] Doble clic en: {licitacion.numero_proceso} (ID: {getattr(licitacion, 'id', 'N/A')})")
-        
-        # Abrir ventana de detalles
-        dialog = LicitationDetailsWindow(
-            parent=self,
-            licitacion=licitacion,
-            db_adapter=self.db,
-            refresh_callback=self.refresh
-        )
-        
-        dialog.exec()
-        
-        # Refrescar después de cerrar
-        self.refresh()    
+
+        # Notificar al workspace (panel lateral) en vez de abrir ventana flotante.
+        self.detail_requested.emit(licitacion)
     # ==================== ACCIONES DE BOTONES ====================
     
     def _on_nueva_licitacion(self) -> None:
@@ -1269,16 +1197,11 @@ class LicitacionesListView(QWidget):
             self.refresh()
     
     def _on_editar_licitacion(self) -> None:
-        """Abre el diálogo para editar la licitación seleccionada."""
-        from app.ui.windows.licitation_details_window import LicitationDetailsWindow
-        
-        # Obtener tabla activa según el tab
+        """Edita la licitación seleccionada en el Side Sheet (emite detail_requested)."""
         current_tab = self.tabs.currentIndex()
         table = self.table_activas if current_tab == 0 else self.table_finalizadas
-        
-        # Obtener fila seleccionada
+
         selection = table.selectionModel().selectedRows()
-        
         if not selection:
             QMessageBox.warning(
                 self,
@@ -1286,35 +1209,18 @@ class LicitacionesListView(QWidget):
                 "Por favor, seleccione una licitación de la tabla para editar."
             )
             return
-        
-        # Obtener objeto licitación desde el modelo
+
         proxy_index = selection[0]
         source_index = proxy_index.model().mapToSource(proxy_index)
-        
         licitacion = self._model.data(
             source_index,
             Qt.ItemDataRole.UserRole + 1002  # ROLE_RECORD_ROLE
         )
-        
         if not licitacion:
-            print("[ERROR] No se pudo obtener objeto licitación desde el modelo")
             return
-        
-        print(f"[DEBUG] Abriendo ventana de edición para: {licitacion.numero_proceso}")
-        
-        # Abrir ventana de detalles
-        dialog = LicitationDetailsWindow(
-            parent=self,
-            licitacion=licitacion,
-            db_adapter=self.db,
-            refresh_callback=self.refresh
-        )
-        
-        result = dialog.exec()
-        
-        if result == dialog.DialogCode.Accepted:
-            print("[DEBUG] Licitación editada correctamente")
-            self.refresh()
+
+        # Mostrar en el panel lateral del workspace (no ventana flotante).
+        self.detail_requested.emit(licitacion)
 
 
     def _show_context_menu(self, pos) -> None:
@@ -1339,25 +1245,26 @@ class LicitacionesListView(QWidget):
         
         # Crear menú
         menu = QMenu(self)
-        menu.setStyleSheet("""
-            QMenu {
-                background-color: #2D2D30;
-                border: 1px solid #3E3E42;
+        menu.setStyleSheet(f"""
+            QMenu {{
+                background-color: {self.colors['base']};
+                border: 1px solid {self.colors['border']};
                 border-radius: 6px;
                 padding: 5px;
-            }
-            QMenu::item {
+            }}
+            QMenu::item {{
                 padding: 8px 25px;
-                color: #FFFFFF;
-            }
-            QMenu::item:selected {
-                background-color: #7C4DFF;
-            }
-            QMenu::separator {
+                color: {self.colors['text']};
+            }}
+            QMenu::item:selected {{
+                background-color: {TOKENS['SELECTION_BG']};
+                color: {TOKENS['PRIMARY_PRESSED']};
+            }}
+            QMenu::separator {{
                 height: 1px;
-                background-color: #3E3E42;
+                background-color: {self.colors['border']};
                 margin: 5px 0px;
-            }
+            }}
         """)
         
         # Acciones

@@ -8,17 +8,20 @@ from typing import Optional, TYPE_CHECKING
 from PyQt6.QtCore import Qt, QTimer, QSettings
 from PyQt6.QtGui import QAction, QKeySequence, QGuiApplication
 from PyQt6.QtWidgets import (
-    QMainWindow, QWidget, QHBoxLayout, QStackedWidget,
+    QMainWindow, QWidget, QHBoxLayout, QVBoxLayout, QStackedWidget,
+    QSplitter, QFrame, QLabel, QPushButton,
     QMessageBox, QDialog, QInputDialog
 )
 
 from app.core.db_adapter import DatabaseAdapter
 from app.core.models import Licitacion
 from app.core.logic.status_engine import DefaultStatusEngine
+from app.core.state.store import LiciproStore
 from app.ui.models.licitaciones_table_model import LicitacionesTableModel
 from app.ui.widgets.modern_widgets import ModernSidebar
 from app.ui.views.dashboard_view import DashboardView
 from app.ui.views.licitaciones_list_view import LicitacionesListView
+from app.ui.theme.emerald_light import TOKENS
 
 # Imports de iconos SVG
 from app.ui.utils.icon_utils import (
@@ -51,6 +54,144 @@ DashboardWidget = safe_import('app.ui.views.dashboard_widget', 'DashboardWidget'
 ReportWindow = safe_import('app.ui.windows.reporte_window', 'ReportWindow')
 
 
+class SideSheetPanel(QFrame):
+    """
+    Panel lateral derecho (Side Sheet) del workspace.
+
+    Incrusta el formulario de edición de licitación (LicitationDetailsWindow) de
+    forma NO modal y reactiva al Store. No tiene botones "Guardar y Cerrar": el
+    autosave blindado de la Fase 2 persiste los cambios al cerrar el panel o al
+    cambiar de fila.
+    """
+
+    PANEL_WIDTH = 560
+
+    def __init__(self, db, store, parent=None):
+        super().__init__(parent)
+        self.db = db
+        self.store = store
+        self._form = None
+        self._current_lic = None
+
+        self.setObjectName("SideSheetPanel")
+        self.setStyleSheet(
+            f"#SideSheetPanel {{ background-color: {TOKENS['BACKGROUND']};"
+            f" border-left: 1px solid {TOKENS['BORDER']}; }}"
+        )
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+
+        # Cabecera: título + botón cerrar
+        header = QFrame()
+        header.setStyleSheet(
+            f"background-color: {TOKENS['SURFACE']};"
+            f" border-bottom: 1px solid {TOKENS['BORDER']};"
+        )
+        header_layout = QHBoxLayout(header)
+        header_layout.setContentsMargins(14, 8, 8, 8)
+        self.lbl_title = QLabel("Detalle de Licitación")
+        self.lbl_title.setStyleSheet(
+            f"font-weight: 600; font-size: 12pt; color: {TOKENS['TEXT_PRIMARY']};"
+            " background: transparent; border: none;"
+        )
+        self.btn_close = QPushButton("✕")
+        self.btn_close.setFixedSize(28, 28)
+        self.btn_close.setToolTip("Cerrar panel (los cambios se guardan automáticamente)")
+        self.btn_close.setStyleSheet(
+            f"QPushButton {{ background: transparent; border: none; font-size: 14px;"
+            f" color: {TOKENS['TEXT_MUTED']}; border-radius: 6px; }}"
+            f" QPushButton:hover {{ background-color: {TOKENS['SURFACE_HOVER']};"
+            f" color: {TOKENS['TEXT_PRIMARY']}; }}"
+        )
+        self.btn_close.clicked.connect(self._on_close_clicked)
+        header_layout.addWidget(self.lbl_title, 1)
+        header_layout.addWidget(self.btn_close, 0)
+        layout.addWidget(header)
+
+        # Host del formulario incrustado
+        self._host = QWidget()
+        self._host_layout = QVBoxLayout(self._host)
+        self._host_layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(self._host, 1)
+
+        self.hide()
+
+    # ---------------- API pública ----------------
+    def show_licitacion(self, licitacion) -> None:
+        """Carga (inline) el formulario de edición de 'licitacion' en el panel."""
+        # Evitar recrear si ya se muestra la misma licitación.
+        if self._form is not None and licitacion is self._current_lic:
+            self.show()
+            return
+
+        self._dispose_form(flush=True)
+
+        from app.ui.windows.licitation_details_window import LicitationDetailsWindow
+        form = LicitationDetailsWindow(
+            parent=self._host,
+            licitacion=licitacion,
+            db_adapter=self.db,
+            refresh_callback=None,
+        )
+        form.embed_as_panel()
+        try:
+            form.saved.connect(self._on_form_saved)
+        except Exception:
+            pass
+
+        self._host_layout.addWidget(form)
+        form.show()
+        self._form = form
+        self._current_lic = licitacion
+
+        titulo = (
+            getattr(licitacion, "numero_proceso", "")
+            or getattr(licitacion, "nombre_proceso", "")
+            or "Nueva licitación"
+        )
+        self.lbl_title.setText(titulo)
+        self.show()
+
+    def clear(self, flush: bool = True) -> None:
+        """Cierra el formulario (con flush de cambios) y colapsa el panel."""
+        self._dispose_form(flush=flush)
+        self._current_lic = None
+        self.hide()
+
+    def has_form(self) -> bool:
+        return self._form is not None
+
+    # ---------------- Internos ----------------
+    def _on_form_saved(self, licitacion) -> None:
+        # Reflejar el guardado en el Store para refrescar tablas/dashboard/KPIs.
+        try:
+            self.store.actualizar_licitacion(licitacion)
+        except Exception:
+            pass
+
+    def _on_close_clicked(self) -> None:
+        # Limpiar selección en el Store -> el workspace colapsa el panel.
+        self.store.seleccionar_licitacion(None)
+
+    def _dispose_form(self, flush: bool = True) -> None:
+        form = self._form
+        self._form = None
+        if form is None:
+            return
+        try:
+            if flush:
+                form.flush_and_close()
+        except Exception:
+            pass
+        try:
+            form.setParent(None)
+            form.deleteLater()
+        except Exception:
+            pass
+
+
 class ModernMainWindow(QMainWindow):
     """
     Ventana principal moderna con sidebar de navegación.
@@ -64,18 +205,22 @@ class ModernMainWindow(QMainWindow):
         self.db = db
         self.status_engine = DefaultStatusEngine()
         self._settings = QSettings("Zoeccivil", "Licitaciones")
-        
+
+        # State Store reactivo (Singleton) — único canal de mutación/notificación.
+        self.store = LiciproStore.instance()
+
         # Modelo de tabla
         self.table_model = LicitacionesTableModel(
             parent=self,
             status_engine=self.status_engine
         )
-        
+
         # UI
         self.setWindowTitle("Gestor de Licitaciones - Modern UI")
         self.resize(1400, 900)
-        
+
         self._setup_ui()
+        self._wire_store()
         self._create_menu_bar()
         self._register_shortcuts()
         self._initialize_data()
@@ -131,16 +276,108 @@ class ModernMainWindow(QMainWindow):
         from app.ui.views.reportes_view import ReportesView
         self.reportes_view = ReportesView(db=self.db, parent=self)
         self.content_stack.addWidget(self.reportes_view)
-        
-        # ==================== AÑADIR STACK AL LAYOUT ====================
-        main_layout.addWidget(self.content_stack, 1)
-        
+
+        # ==================== SIDE SHEET (panel lateral derecho) ====================
+        self.side_sheet = SideSheetPanel(self.db, self.store, parent=self)
+
+        # Splitter horizontal: zona de contenido + panel lateral colapsable.
+        self._content_splitter = QSplitter(Qt.Orientation.Horizontal)
+        self._content_splitter.addWidget(self.content_stack)
+        self._content_splitter.addWidget(self.side_sheet)
+        self._content_splitter.setStretchFactor(0, 1)
+        self._content_splitter.setStretchFactor(1, 0)
+        self._content_splitter.setCollapsible(0, False)
+        self._content_splitter.setCollapsible(1, True)
+
+        main_layout.addWidget(self._content_splitter, 1)
+
         # Status bar
         self.setStatusBar(self.statusBar())
-        self._update_statusbar_kpis()    
+        self._update_statusbar_kpis()
 
 
         
+    # ==================== STATE STORE (REACTIVIDAD) ====================
+
+    def _wire_store(self) -> None:
+        """Distribuye el Store a las vistas secundarias y suscribe la UI a sus
+        señales para que se actualice automáticamente ante cualquier mutación."""
+        # Distribución a vistas secundarias (pueden consumir el estado/señales).
+        self.dashboard_view.store = self.store
+        self.licitaciones_view.store = self.store
+
+        # Suscripciones reactivas: cualquier cambio en el Store refresca la UI.
+        self.store.licitaciones_cargadas.connect(self._on_store_licitaciones)
+        self.store.licitacion_actualizada.connect(self._on_store_licitacion_actualizada)
+        self.store.metricas_recomputadas.connect(self._on_store_metricas)
+        # Selección -> mostrar/ocultar el Side Sheet lateral.
+        self.store.licitacion_seleccionada_changed.connect(self._on_store_seleccion)
+
+        # Disparadores de selección desde la lista (single-window workspace):
+        # doble clic emite detail_requested; selección de fila empuja al Store.
+        self.licitaciones_view.detail_requested.connect(self.store.seleccionar_licitacion)
+        for _table in (self.licitaciones_view.table_activas, self.licitaciones_view.table_finalizadas):
+            sm = _table.selectionModel()
+            if sm is not None:
+                sm.selectionChanged.connect(self._on_list_selection_changed)
+
+    def _on_list_selection_changed(self, *_args) -> None:
+        """Una fila seleccionada en la lista -> seleccionar en el Store (abre panel)."""
+        view = self.licitaciones_view
+        table = view.table_activas if view.tabs.currentIndex() == 0 else view.table_finalizadas
+        sm = table.selectionModel()
+        if sm is None:
+            return
+        sel = sm.selectedRows()
+        if not sel:
+            return
+        proxy_index = sel[0]
+        try:
+            source_index = proxy_index.model().mapToSource(proxy_index)
+            lic = self.table_model.data(source_index, Qt.ItemDataRole.UserRole + 1002)
+        except Exception:
+            lic = None
+        if lic is not None:
+            self.store.seleccionar_licitacion(lic)
+
+    def _on_store_seleccion(self, licitacion) -> None:
+        """Muestra el Side Sheet con la licitación seleccionada, o lo colapsa."""
+        if licitacion is None:
+            self.side_sheet.clear()
+            return
+        self.side_sheet.show_licitacion(licitacion)
+        # Dar ancho al panel lateral (colapsable por el usuario vía el splitter).
+        try:
+            total = self._content_splitter.width() or self.width()
+            panel_w = self.side_sheet.PANEL_WIDTH
+            self._content_splitter.setSizes([max(320, total - panel_w), panel_w])
+        except Exception:
+            pass
+
+    def _on_store_licitaciones(self, licitaciones) -> None:
+        """Nueva colección en el Store -> re-render del modelo y vistas."""
+        self.table_model.set_rows(licitaciones)
+        self.licitaciones_view.refresh()
+        self.dashboard_view.refresh_stats()
+
+    def _on_store_licitacion_actualizada(self, _lic) -> None:
+        """Una licitación cambió -> re-render con la colección vigente del Store."""
+        self.table_model.set_rows(self.store.licitaciones)
+        self.licitaciones_view.refresh()
+        self.dashboard_view.refresh_stats()
+
+    def _on_store_metricas(self, metricas: dict) -> None:
+        """KPIs recomputados -> actualizar la barra de estado (sin tocar la BD)."""
+        try:
+            msg = (
+                f"Ganadas: {metricas.get('ganadas', 0)} | "
+                f"Perdidas: {metricas.get('perdidas', 0)} | "
+                f"Éxito: {metricas.get('tasa_exito', 0.0):.1f}%"
+            )
+            self.statusBar().showMessage(msg)
+        except Exception:
+            pass
+
     def _create_reportes_placeholder(self) -> QWidget:
         """Crea un placeholder para la vista de reportes."""
         from PyQt6.QtWidgets import QVBoxLayout, QLabel, QPushButton
@@ -150,11 +387,11 @@ class ModernMainWindow(QMainWindow):
         layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
         
         label = QLabel("📈 Módulo de Reportes")
-        label.setStyleSheet("font-size: 24px; font-weight: bold; color: #7C4DFF;")
+        label.setStyleSheet(f"font-size: 24px; font-weight: bold; color: {TOKENS['TEXT_PRIMARY']};")
         layout.addWidget(label, alignment=Qt.AlignmentFlag.AlignCenter)
-        
+
         sublabel = QLabel("Accede a los reportes desde el menú superior")
-        sublabel.setStyleSheet("font-size: 14px; color: #B0B0B0;")
+        sublabel.setStyleSheet(f"font-size: 14px; color: {TOKENS['TEXT_MUTED']};")
         layout.addWidget(sublabel, alignment=Qt.AlignmentFlag.AlignCenter)
         
         btn = QPushButton("Abrir KPIs y Reportes Avanzados")
@@ -299,8 +536,10 @@ class ModernMainWindow(QMainWindow):
         
         try:
             licitaciones = self.db.load_all_licitaciones() or []
-            self.table_model.set_rows(licitaciones)
-            
+            # Empujar al Store: emite licitaciones_cargadas + metricas_recomputadas,
+            # que a su vez actualizan modelo, vistas y barra de estado.
+            self.store.set_licitaciones(licitaciones)
+
             import os
             backend = os.getenv("APP_DB_BACKEND", "firestore")
             backend_names = {
@@ -336,12 +575,10 @@ class ModernMainWindow(QMainWindow):
             print(f"[WARNING] No se pudo activar sincronización: {e}")
     
     def _on_data_changed(self, licitaciones) -> None:
-        """Maneja cambios de datos en tiempo real."""
+        """Maneja cambios de datos en tiempo real (Firestore) vía el Store."""
         try:
-            self.table_model.set_rows(licitaciones)
-            self.licitaciones_view.refresh()
-            self.dashboard_view.refresh_stats()
-            self._update_statusbar_kpis()
+            # El Store propaga el cambio a modelo, vistas y KPIs reactivamente.
+            self.store.set_licitaciones(licitaciones)
         except Exception as e:
             print(f"[ERROR] Error actualizando datos: {e}")
     
@@ -361,32 +598,20 @@ class ModernMainWindow(QMainWindow):
     # ==================== ACCIONES LICITACIONES ====================
     
     def _on_nueva_licitacion(self) -> None:
-        """Abre diálogo para crear nueva licitación."""
-        from app.ui.windows.licitation_details_window import LicitationDetailsWindow
-        
-        nueva = Licitacion()
-        
-        dialog = LicitationDetailsWindow(
-            parent=self,
-            licitacion=nueva,
-            db_adapter=self.db,
-            refresh_callback=self._refresh_all
-        )
-        
-        if dialog.exec() == QDialog.DialogCode.Accepted:
-            self._refresh_all()
-    
+        """Crea una nueva licitación y la abre en el Side Sheet lateral."""
+        # Asegurar que estamos en la vista de licitaciones.
+        self.sidebar.select_item("licitaciones")
+        # Seleccionar una licitación nueva en el Store -> abre el panel lateral.
+        self.store.seleccionar_licitacion(Licitacion())
+
     def _on_editar_licitacion(self) -> None:
-        """Abre diálogo para editar licitación seleccionada."""
-        from app.ui.windows.licitation_details_window import LicitationDetailsWindow
-        
+        """Abre la licitación seleccionada en el Side Sheet lateral."""
         # Obtener tabla activa
         current_tab = self.licitaciones_view.tabs.currentIndex()
-        table = (self.licitaciones_view.table_activas if current_tab == 0 
-                else self.licitaciones_view.table_finalizadas)
-        
+        table = (self.licitaciones_view.table_activas if current_tab == 0
+                 else self.licitaciones_view.table_finalizadas)
+
         selection = table.selectionModel().selectedRows()
-        
         if not selection:
             QMessageBox.information(
                 self,
@@ -394,27 +619,18 @@ class ModernMainWindow(QMainWindow):
                 "Seleccione una licitación para editar."
             )
             return
-        
-        # Obtener licitación del modelo
+
         proxy_index = selection[0]
         source_index = proxy_index.model().mapToSource(proxy_index)
         licitacion = self.table_model.data(
             source_index,
             Qt.ItemDataRole.UserRole + 1002
         )
-        
         if not licitacion:
             return
-        
-        dialog = LicitationDetailsWindow(
-            parent=self,
-            licitacion=licitacion,
-            db_adapter=self.db,
-            refresh_callback=self._refresh_all
-        )
-        
-        if dialog.exec() == QDialog.DialogCode.Accepted:
-            self._refresh_all()
+
+        # Mostrar en el panel lateral (vía el Store).
+        self.store.seleccionar_licitacion(licitacion)
     
     # ==================== MENÚ ARCHIVO ====================
     
@@ -728,13 +944,10 @@ class ModernMainWindow(QMainWindow):
     # ==================== UTILIDADES ====================
     
     def _refresh_all(self) -> None:
-        """Refresca todas las vistas."""
+        """Recarga desde la BD y propaga por el Store (modelo + vistas + KPIs)."""
         try:
             licitaciones = self.db.load_all_licitaciones() or []
-            self.table_model.set_rows(licitaciones)
-            self.licitaciones_view.refresh()
-            self.dashboard_view.refresh_stats()
-            self._update_statusbar_kpis()
+            self.store.set_licitaciones(licitaciones)
             self.statusBar().showMessage("✓ Datos actualizados", 2000)
         except Exception as e:
             print(f"[ERROR] Error refrescando: {e}")
@@ -746,22 +959,10 @@ class ModernMainWindow(QMainWindow):
         QTimer.singleShot(100, self._on_nueva_licitacion)
     
     def _update_statusbar_kpis(self) -> None:
-        """Actualiza KPIs en la barra de estado."""
-        try:
-            if DashboardWidget is None:
-                return
-            
-            dash = DashboardWidget(db=self.db)
-            dash.reload_data()
-            kpis = dash.get_global_kpis_summary()
-            
-            msg = (f"Ganadas: {kpis['ganadas']} | "
-                   f"Perdidas: {kpis['perdidas']} | "
-                   f"Éxito: {kpis['tasa_exito']:.1f}%")
-            
-            self.statusBar().showMessage(msg)
-        except Exception:
-            pass
+        """Actualiza KPIs en la barra de estado a partir de las métricas ya
+        calculadas por el Store (sin volver a consultar la base de datos)."""
+        store = getattr(self, "store", None)
+        self._on_store_metricas(store.metricas if store else {})
     
     def _on_acerca_de(self) -> None:
         """Muestra información de la aplicación."""

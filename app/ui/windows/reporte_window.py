@@ -20,6 +20,8 @@ except Exception:
     FigureCanvas = None
     Figure = None
 
+from app.ui.theme.emerald_light import TOKENS
+
 # ReportGenerator (rutas tolerantes)
 REPORT_GENERATOR_AVAILABLE = False
 REPORT_GENERATOR_IMPORT_ERROR = ""
@@ -98,53 +100,23 @@ class ReportWindow(QMainWindow):
 
     # ---------- Tema / Colores ----------
     def _resolve_theme_colors(self) -> dict:
-        """
-        ✅ CORRECCIÓN: Usa QPalette para obtener colores del tema activo
-        en lugar de hardcodear valores.
-        """
-        app = QGuiApplication.instance()
-        pal: QPalette = app.palette() if app else QPalette()
-
-        def get_color(role: QPalette.ColorRole, fallback: str) -> str:
-            """Obtiene color de la paleta o usa fallback."""
-            try:
-                color = pal.color(role)
-                if color.isValid():
-                    return _hex(color)
-            except Exception:
-                pass
-            return fallback
-
-        # Obtener colores del tema activo
-        accent = get_color(QPalette.ColorRole.Highlight, "#7C4DFF")
-        text = get_color(QPalette.ColorRole.Text, "#E6E9EF")
-        text_sec = get_color(QPalette.ColorRole.PlaceholderText, "#B9C0CC")
-        window = get_color(QPalette.ColorRole.Window, "#1E1E1E")
-        base = get_color(QPalette.ColorRole.Base, "#252526")
-        alt = get_color(QPalette.ColorRole.AlternateBase, "#2D2D30")
-        button = get_color(QPalette.ColorRole.Button, "#3E3E42")
-        border = get_color(QPalette.ColorRole.Mid, "#3A4152")
-
-        # Colores semánticos (fijos pero adaptables)
-        success = "#00C853"
-        danger = "#FF5252"
-        warning = "#FFA726"
-        info = accent
-
+        """Paleta de la ventana derivada de los Design Tokens del tema claro
+        (Sober Light Emerald). Gobierna tarjetas, tablas y gráficos matplotlib."""
+        accent = TOKENS["PRIMARY_ACCENT"]   # #059669
         return {
             "accent": accent,
-            "accent_soft": f"{accent}26",  # ~15% alpha
-            "text": text,
-            "text_sec": text_sec,
-            "window": window,
-            "base": base,
-            "alt": alt,
-            "button": button,
-            "border": border,
-            "success": success,
-            "danger": danger,
-            "warning": warning,
-            "info": info,
+            "accent_soft": f"{accent}26",       # ~15% alpha
+            "text": TOKENS["TEXT_PRIMARY"],     # #18181B
+            "text_sec": TOKENS["TEXT_MUTED"],   # #71717A
+            "window": TOKENS["BACKGROUND"],     # #F9F9FB
+            "base": TOKENS["SURFACE"],          # #FFFFFF
+            "alt": TOKENS["SURFACE_ALT"],       # #FAFAFA
+            "button": TOKENS["SURFACE"],        # #FFFFFF
+            "border": TOKENS["BORDER"],         # #E4E4E7
+            "success": TOKENS["SUCCESS_TEXT"],
+            "danger": TOKENS["ERROR_TEXT"],
+            "warning": TOKENS["WARNING_TEXT"],
+            "info": TOKENS["INFO_TEXT"],
         }
 
     def _setup_palette(self):

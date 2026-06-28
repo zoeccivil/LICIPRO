@@ -31,10 +31,10 @@ EXCLUDE_OPTIONAL = {
 
 @dataclass
 class ThemeInfo:
-    id: str                 # id único = nombre de módulo (p.ej. dim_theme)
+    id: str                 # id único = nombre de módulo (p.ej. emerald_light)
     title: str              # nombre amigable para menú
-    module_name: str        # ruta completa del módulo (app.ui.theme.dim_theme) o file path when frozen
-    apply_func_name: str    # nombre de la función a invocar (apply_dim_theme, apply_theme, etc.)
+    module_name: str        # ruta completa del módulo (app.ui.theme.emerald_light) o file path when frozen
+    apply_func_name: str    # nombre de la función a invocar (apply_theme, etc.)
 
 
 def _humanize(name: str) -> str:
@@ -266,12 +266,12 @@ def apply_theme_by_id(app: QApplication, theme_id: str) -> bool:
     return False
 
 
-def current_theme_id(default: str = "dim_theme") -> str:
+def current_theme_id(default: str = "emerald_light") -> str:
     val = get_value("ui_theme", "").strip()
     return val or default
 
 
-def apply_theme_from_settings(app: QApplication, fallback: str = "dim_theme") -> str:
+def apply_theme_from_settings(app: QApplication, fallback: str = "emerald_light") -> str:
     """
     Lee el tema desde licitaciones_config (ui_theme) y lo aplica.
     Si falla, intenta el fallback. Devuelve el id aplicado (o el que quedó seleccionado).
@@ -282,10 +282,10 @@ def apply_theme_from_settings(app: QApplication, fallback: str = "dim_theme") ->
         if tid != fallback and apply_theme_by_id(app, fallback):
             save_theme_selection(fallback)
             return fallback
-        # Intento final: light_theme
-        if apply_theme_by_id(app, "light_theme"):
-            save_theme_selection("light_theme")
-            return "light_theme"
+        # Intento final: tema único Sober Light Emerald
+        if apply_theme_by_id(app, "emerald_light"):
+            save_theme_selection("emerald_light")
+            return "emerald_light"
     return tid
 
 

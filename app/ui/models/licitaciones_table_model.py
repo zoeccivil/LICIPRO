@@ -6,6 +6,18 @@ from PyQt6.QtGui import QColor, QBrush, QIcon, QPixmap, QPainter, QFont, QPen
 from PyQt6.QtCore import Qt, QVariant, QModelIndex
 from PyQt6.QtGui import QColor, QBrush, QFont
 
+from app.ui.theme.emerald_light import TOKENS
+
+# --- Colores semánticos derivados del tema activo (Design Tokens) ---
+# Texto de alertas
+COLOR_DANGER = QColor(TOKENS["ERROR_TEXT"])      # Rojo sutil (vencida / negativo / perdida)
+COLOR_SUCCESS = QColor(TOKENS["SUCCESS_TEXT"])   # Verde esmeralda (positivo / ganada)
+COLOR_INFO = QColor(TOKENS["INFO_TEXT"])         # Azul info (hoy / en curso)
+COLOR_WARNING = QColor(TOKENS["WARNING_TEXT"])   # Ámbar (faltan pocos días)
+COLOR_MUTED = QColor(TOKENS["TEXT_MUTED"])       # Gris medio (desierta)
+# Fondos de fila (tema claro)
+COLOR_ROW_ALT = QColor(TOKENS["SURFACE_HOVER"])  # #F4F4F5 — filas alternas claras
+
 IS_FINALIZADA_ROLE = Qt.ItemDataRole.UserRole + 1001
 ROLE_RECORD_ROLE = Qt.ItemDataRole.UserRole + 1002
 ESTADO_TEXT_ROLE = Qt.ItemDataRole.UserRole + 1003
@@ -114,13 +126,13 @@ class LicitacionesTableModel(QAbstractTableModel):
         n = (text or "").lower()
         # Verde ✓ para ganada
         if "adjudicada" in n and "ganada" in n:
-            return self._badge_icon(QColor("#2E7D32"), "✓")
+            return self._badge_icon(COLOR_SUCCESS, "✓")
         # Rojo ✕ para perdida/cancelada/descalificada
         if any(k in n for k in ("perdida", "cancel", "descalific")):
-            return self._badge_icon(QColor("#C62828"), "✕")
+            return self._badge_icon(COLOR_DANGER, "✕")
         # Gris – para desierta
         if "desierta" in n:
-            return self._badge_icon(QColor("#616161"), "–")
+            return self._badge_icon(COLOR_MUTED, "–")
         # Sin ícono para el resto
         return None
 
@@ -128,63 +140,11 @@ class LicitacionesTableModel(QAbstractTableModel):
 
     def get_dias_restantes(self, lic) -> Optional[int]:
         """
-        Devuelve la cantidad de días hasta el próximo hito relevante del cronograma de la licitación 'lic'.
-        Soporta cronogramas donde cada valor es un dict con 'fecha_limite'.
+        Días hasta el próximo hito relevante del cronograma (negativo si vencido,
+        None si no hay cronograma). Fuente única de verdad: servicio de dominio.
         """
-        import datetime
-
-        cronograma = getattr(lic, "cronograma", None) or {}
-
-        prioridad = [
-            "presentacion_ofertas", "presentación_ofertas", "apertura_ofertas",
-            "apertura", "ofertas", "adjudicacion", "adjudicación"
-        ]
-        hoy = datetime.date.today()
-
-        fechas = []
-        # Busca claves prioritarias
-        for key in prioridad:
-            for k, v in (cronograma or {}).items():
-                if key in str(k).lower() and v:
-                    fecha_str = None
-                    # Si es dict, busca 'fecha_limite'
-                    if isinstance(v, dict):
-                        fecha_str = v.get("fecha_limite")
-                    else:
-                        fecha_str = v
-                    if fecha_str:
-                        for fmt in ("%Y-%m-%d", "%d/%m/%Y"):
-                            try:
-                                d = datetime.datetime.strptime(str(fecha_str).strip()[:10], fmt).date()
-                                fechas.append((d, k))
-                                break
-                            except Exception:
-                                continue
-        # Si no hay por prioridad, busca cualquier fecha válida
-        if not fechas:
-            for k, v in (cronograma or {}).items():
-                fecha_str = None
-                if isinstance(v, dict):
-                    fecha_str = v.get("fecha_limite")
-                else:
-                    fecha_str = v
-                if fecha_str:
-                    for fmt in ("%Y-%m-%d", "%d/%m/%Y"):
-                        try:
-                            d = datetime.datetime.strptime(str(fecha_str).strip()[:10], fmt).date()
-                            fechas.append((d, k))
-                            break
-                        except Exception:
-                            continue
-
-        if not fechas:
-            return None
-
-        fechas_ordenadas = sorted(fechas, key=lambda x: x[0])
-        for fecha, _ in fechas_ordenadas:
-            if fecha >= hoy:
-                return (fecha - hoy).days
-        return (fechas_ordenadas[-1][0] - hoy).days
+        from app.core.logic.domain_service import calcular_dias_restantes
+        return calcular_dias_restantes(lic)
 
 
 
@@ -226,7 +186,20 @@ class LicitacionesTableModel(QAbstractTableModel):
             except:
                 return False
         if role == ROW_BG_ROLE:
+            # Color de fondo de fila según estado (pasteles claros del status_engine).
+            # Lo consume RowColorDelegate para pintar toda la fila.
             return getattr(lic, "__row_bg__", None)
+
+        # --- 1b. FONDO DE FILAS ALTERNAS (tema claro) ---
+        if role == Qt.ItemDataRole.BackgroundRole:
+            # Si la fila tiene color de estado explícito, lo pinta RowColorDelegate
+            # vía ROW_BG_ROLE; aquí no interferimos.
+            if getattr(lic, "__row_bg__", None):
+                return QVariant()
+            # Filas alternas con gris claro del token (#F4F4F5); pares en blanco (SURFACE).
+            if row % 2 == 1:
+                return QBrush(COLOR_ROW_ALT)
+            return QVariant()
 
         # --- 2. FORMATO DE FUENTE (Negrita en Código) ---
         if role == Qt.ItemDataRole.FontRole:
@@ -241,32 +214,32 @@ class LicitacionesTableModel(QAbstractTableModel):
             if col == 3:
                 dias = self.get_dias_restantes(lic)
                 if dias is not None:
-                    if dias < 0: return QBrush(QColor("#DC2626"))  # Rojo (Vencida)
-                    if dias == 0: return QBrush(QColor("#2563EB")) # Azul (Hoy)
-                    if dias <= 5: return QBrush(QColor("#B45309")) # Amarillo oscuro (Faltan pocos días)
+                    if dias < 0: return QBrush(COLOR_DANGER)   # Rojo sutil (Vencida)
+                    if dias == 0: return QBrush(COLOR_INFO)    # Azul info (Hoy)
+                    if dias <= 5: return QBrush(COLOR_WARNING) # Ámbar (Faltan pocos días)
 
             # --- Columna % Dif (idx 5) ---
             if col == 5:
                 val = self.data(index, DIFERENCIA_PCT_ROLE)
                 if val == val: # Verificar que no sea NaN
-                    if val < 0: return QBrush(QColor("#DC2626")) # Rojo (Negativo)
-                    if val > 0: return QBrush(QColor("#16A34A")) # Verde (Positivo)
+                    if val < 0: return QBrush(COLOR_DANGER)  # Rojo sutil (Negativo)
+                    if val > 0: return QBrush(COLOR_SUCCESS) # Verde esmeralda (Positivo)
 
             # --- Columna Estatus (idx 7) ---
             if col == 7:
                 txt = str(self.data(index, ESTADO_TEXT_ROLE) or "").lower()
                 # Verde para Entregados o Ganadas
                 if any(k in txt for k in ("entregado", "ganada", "adjudicada")):
-                    return QBrush(QColor("#16A34A"))
+                    return QBrush(COLOR_SUCCESS)
                 # Rojo para Perdidas o Canceladas
                 if any(k in txt for k in ("perdida", "cancel", "descalific")):
-                    return QBrush(QColor("#DC2626"))
+                    return QBrush(COLOR_DANGER)
                 # Azul para En Curso
                 if "en curso" in txt:
-                    return QBrush(QColor("#2563EB"))
+                    return QBrush(COLOR_INFO)
                 # Gris para Desiertas
                 if "desierta" in txt:
-                    return QBrush(QColor("#616161"))
+                    return QBrush(COLOR_MUTED)
 
         # --- 4. ÍCONOS EN ESTATUS (DecorationRole) ---
         if role == Qt.ItemDataRole.DecorationRole and col == 7:
@@ -405,19 +378,19 @@ class LicitacionesTableModel(QAbstractTableModel):
             header = f"<b>{lic_nombre}</b><br>"
 
             if diferencia < 0:
-                color = "#C62828"
+                color = TOKENS["ERROR_TEXT"]
                 texto = f"{header}<span style='color:{color};font-weight:bold'>Vencida hace {abs(diferencia)} día{'s' if abs(diferencia)!=1 else ''} para:<br><b>{nombre_hito.replace('_', ' ').capitalize()}</b> <br><span style='font-size:11pt'>({fecha_str})</span></span>"
             elif diferencia == 0:
-                color = "#F9A825"
+                color = TOKENS["WARNING_TEXT"]
                 texto = f"{header}<span style='color:{color};font-weight:bold'>Hoy:<br><b>{nombre_hito.replace('_', ' ').capitalize()}</b> <br><span style='font-size:11pt'>({fecha_str})</span></span>"
             elif diferencia <= 7:
-                color = "#FBC02D"
+                color = TOKENS["WARNING_TEXT"]
                 texto = f"{header}<span style='color:{color};font-weight:bold'>Faltan {diferencia} días para:<br><b>{nombre_hito.replace('_', ' ').capitalize()}</b> <br><span style='font-size:11pt'>({fecha_str})</span></span>"
             elif diferencia <= 30:
-                color = "#42A5F5"
+                color = TOKENS["INFO_TEXT"]
                 texto = f"{header}<span style='color:{color};font-weight:bold'>Faltan {diferencia} días para:<br><b>{nombre_hito.replace('_', ' ').capitalize()}</b> <br><span style='font-size:11pt'>({fecha_str})</span></span>"
             else:
-                color = "#2E7D32"
+                color = TOKENS["SUCCESS_TEXT"]
                 texto = f"{header}<span style='color:{color};font-weight:bold'>Faltan {diferencia} días para:<br><b>{nombre_hito.replace('_', ' ').capitalize()}</b> <br><span style='font-size:11pt'>({fecha_str})</span></span>"
             self.nextDueArea.setText(texto)
             return
